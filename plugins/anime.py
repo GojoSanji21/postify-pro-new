@@ -289,7 +289,7 @@ async def handle_anime_thumb_custom(client: Bot, callback_query: CallbackQuery):
 
     await callback_query.answer("Please send the custom photo now.")
     try:
-        response = await client.ask(user_id, "Send the custom image for the poster now:", filters=filters.photo, timeout=60)
+        response = await client.ask(user_id, "Send the custom image for the poster now:", filters=filters.photo | filters.document, timeout=60)
         photo_path = await response.download()
         user_data[user_id]['custom_image'] = photo_path
         await anime_audio_menu(client, callback_query)
@@ -385,7 +385,20 @@ async def build_final_poster(client, callback_query, user_id):
 
     final_username = custom_text if custom_text else fallback_name
 
-    poster_buf = await generate_poster(
+    try:
+        from databases.database import db
+        template_v = await db.get_anime_template(user_id)
+    except:
+        template_v = 1
+
+    if template_v == 2:
+        from plugins.thumbnail_maker import generate_poster_2
+        gen_func = generate_poster_2
+    else:
+        from plugins.thumbnail_maker import generate_poster
+        gen_func = generate_poster
+
+    poster_buf = await gen_func(
         anime_img_url=image_url if not custom_image_path else None,
         custom_image_path=custom_image_path,
         title=title,
@@ -428,13 +441,14 @@ async def build_final_poster(client, callback_query, user_id):
     return poster_buf, caption
 
 def get_final_keyboard(color_state):
+    from pyrogram.enums import ButtonStyle
     color_name = COLORS[color_state]['name']
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move"),
-         InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next")],
-        [InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color")],
-        [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu"),
-         InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done")]
+        [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move", style=ButtonStyle.PRIMARY),
+         InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
+         InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
     ])
 
 @Bot.on_callback_query(filters.regex(r"^anime_audio_(.*)"), group=-1)
