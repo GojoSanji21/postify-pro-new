@@ -1,5 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
+from pyrogram.enums import ButtonStyle
 from bot import Bot
 from plugins.utils import apply_small_caps
 import asyncio
@@ -102,11 +103,11 @@ async def settings_command(client: Client, message: Message):
     header = get_header("General Settings", user.id, user.first_name)
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(apply_small_caps("Anime"), callback_data="set_anime"), InlineKeyboardButton(apply_small_caps("Manga"), callback_data="set_manga")],
-        [InlineKeyboardButton(apply_small_caps("TvShows"), callback_data="set_tvshows"), InlineKeyboardButton(apply_small_caps("Movies"), callback_data="set_movies")],
-        [InlineKeyboardButton(apply_small_caps("Post Setting"), callback_data="post_settings")],
-        [InlineKeyboardButton(apply_small_caps("Auto Forward"), callback_data="auto_forward"), InlineKeyboardButton(apply_small_caps("Post Search"), callback_data="post_search")],
-        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="close")]
+        [InlineKeyboardButton(apply_small_caps("Anime"), callback_data="set_anime", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Manga"), callback_data="set_manga", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("TvShows"), callback_data="set_tvshows", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Movies"), callback_data="set_movies", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Post Setting"), callback_data="post_settings", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Auto Forward"), callback_data="auto_forward", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Post Search"), callback_data="post_search", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="close", style=ButtonStyle.PRIMARY)]
     ])
     await message.reply_photo(photo=TEMPLATE_PIC, caption=header + MAIN_SETTINGS_TEXT, reply_markup=keyboard)
 
@@ -117,11 +118,11 @@ async def settings_main_cb(client: Client, query: CallbackQuery):
     header = get_header("General Settings", user.id, user.first_name)
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(apply_small_caps("Anime"), callback_data="set_anime"), InlineKeyboardButton(apply_small_caps("Manga"), callback_data="set_manga")],
-        [InlineKeyboardButton(apply_small_caps("TvShows"), callback_data="set_tvshows"), InlineKeyboardButton(apply_small_caps("Movies"), callback_data="set_movies")],
-        [InlineKeyboardButton(apply_small_caps("Post Setting"), callback_data="post_settings")],
-        [InlineKeyboardButton(apply_small_caps("Auto Forward"), callback_data="auto_forward"), InlineKeyboardButton(apply_small_caps("Post Search"), callback_data="post_search")],
-        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="close")]
+        [InlineKeyboardButton(apply_small_caps("Anime"), callback_data="set_anime", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Manga"), callback_data="set_manga", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("TvShows"), callback_data="set_tvshows", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Movies"), callback_data="set_movies", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Post Setting"), callback_data="post_settings", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Auto Forward"), callback_data="auto_forward", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Post Search"), callback_data="post_search", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="close", style=ButtonStyle.PRIMARY)]
     ])
     try:
         await query.edit_message_media(media=InputMediaPhoto(TEMPLATE_PIC, caption=header + MAIN_SETTINGS_TEXT), reply_markup=keyboard)
@@ -227,6 +228,12 @@ async def anime_template_1_cb(client: Client, query: CallbackQuery):
     await query.answer("Previewing Template 1...", show_alert=False)
     header = get_header("Template Settings")
 
+    try:
+        from databases.database import db
+        await db.set_anime_template(query.from_user.id, 1)
+    except: pass
+
+
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(apply_small_caps("✅ Template 1 (Main)"), callback_data="set_anime_template_1")],
         [InlineKeyboardButton(apply_small_caps("Poster 2"), callback_data="set_anime_template_2"), InlineKeyboardButton(apply_small_caps("Poster 3"), callback_data="set_anime_template_3")],
@@ -238,6 +245,30 @@ async def anime_template_1_cb(client: Client, query: CallbackQuery):
     text = apply_small_caps("◉ Select Template For Anime") + "\n\n- " + apply_small_caps("Current: Template 1 (Main)")
     try:
         await query.edit_message_media(media=InputMediaPhoto(TEMPLATE_1_PIC, caption=header + text), reply_markup=keyboard)
+    except:
+        pass
+
+@Bot.on_callback_query(filters.regex('^set_anime_template_2$'), group=-1)
+async def anime_template_2_cb(client: Client, query: CallbackQuery):
+    await query.answer("Previewing Poster 2...", show_alert=False)
+    header = get_header("Template Settings")
+
+    try:
+        from databases.database import db
+        await db.set_anime_template(query.from_user.id, 2)
+    except: pass
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(apply_small_caps("Template 1 (Main)"), callback_data="set_anime_template_1")],
+        [InlineKeyboardButton(apply_small_caps("✅ Poster 2"), callback_data="set_anime_template_2"), InlineKeyboardButton(apply_small_caps("Poster 3"), callback_data="set_anime_template_3")],
+        [InlineKeyboardButton(apply_small_caps("Poster 4"), callback_data="set_anime_template_4"), InlineKeyboardButton(apply_small_caps("Poster 5"), callback_data="set_anime_template_5")],
+        [InlineKeyboardButton(apply_small_caps("Poster 6"), callback_data="set_anime_template_6"), InlineKeyboardButton(apply_small_caps("Poster 7"), callback_data="set_anime_template_7")],
+        [InlineKeyboardButton(apply_small_caps("Poster 8"), callback_data="set_anime_template_8"), InlineKeyboardButton(apply_small_caps("Poster 9"), callback_data="set_anime_template_9")],
+        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="set_anime")]
+    ])
+    text = apply_small_caps("◉ Select Template For Anime") + "\n\n- " + apply_small_caps("Current: Poster 2")
+    try:
+        await query.edit_message_media(media=InputMediaPhoto("https://ibb.co/dwVcsM83", caption=header + text), reply_markup=keyboard)
     except:
         pass
 
