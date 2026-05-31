@@ -54,7 +54,7 @@ To add a channel, you have two options:
 Note: You must be an administrator in the channel for the bot to work.</blockquote>"""
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="cancel_add_channel", style=ButtonStyle.SUCCESS)]
+        [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="cancel_add_channel")]
     ])
 
     if query.message.photo:
@@ -279,10 +279,10 @@ async def start_command(client: Client, message: Message):
 
     else:
         reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("ᴄʟɪᴄᴋ ғᴏʀ ᴍᴏʀᴇ", callback_data='about', style=ButtonStyle.PRIMARY)],
-                    [InlineKeyboardButton("sᴇᴛᴛɪɴɢs", callback_data='setting', style=ButtonStyle.DANGER),
+                    [InlineKeyboardButton("• ᴄʟɪᴄᴋ ғᴏʀ ᴍᴏʀᴇ •", callback_data='about', style=ButtonStyle.PRIMARY)],
+                    [InlineKeyboardButton("• sᴇᴛᴛɪɴɢs", callback_data='setting', style=ButtonStyle.DANGER),
                      InlineKeyboardButton('ᴘᴏsᴛᴇʀ', callback_data='settings_main', style=ButtonStyle.DANGER)],
-                    [InlineKeyboardButton("ᴀᴅᴅ ᴄʜᴀɴɴᴇʟ", callback_data='add_channel_req', style=ButtonStyle.SUCCESS)],
+                    [InlineKeyboardButton("➕ ᴀᴅᴅ ᴄʜᴀɴɴᴇʟ", callback_data='add_channel_req', style=ButtonStyle.SUCCESS)],
                 ])
         await message.reply_photo(
             photo = random.choice(PICS),
