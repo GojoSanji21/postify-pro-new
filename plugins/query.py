@@ -238,7 +238,7 @@ async def cb_handler(client: Bot, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("ᴄʟɪᴄᴋ ғᴏʀ ᴍᴏʀᴇ", callback_data='about', style=ButtonStyle.PRIMARY)],
                     [InlineKeyboardButton("sᴇᴛᴛɪɴɢs", callback_data='setting', style=ButtonStyle.DANGER),
-                     InlineKeyboardButton('ᴘᴏsᴛᴇʀ', callback_data='settings_main', style=ButtonStyle.DANGER)],
+                     InlineKeyboardButton('ᴘᴏsᴛᴇʀ', callback_data='settings_main', style=ButtonStyle.PRIMARY)],
                     [InlineKeyboardButton("➕ ᴀᴅᴅ ᴄʜᴀɴɴᴇʟ", callback_data='add_channel_req', style=ButtonStyle.SUCCESS)],
                 ]),
         )
