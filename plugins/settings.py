@@ -142,11 +142,11 @@ async def anime_settings_cb(client: Client, query: CallbackQuery):
         current_brand_text = "FOR MORE VISIT @ANIME_VERSE"
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(apply_small_caps("Caption"), callback_data="set_anime_caption"), InlineKeyboardButton(apply_small_caps("Buttons"), callback_data="set_anime_buttons")],
-        [InlineKeyboardButton(apply_small_caps("Template"), callback_data="set_anime_template"), InlineKeyboardButton(apply_small_caps("Branding"), callback_data="set_anime_branding")],
-        [InlineKeyboardButton(apply_small_caps("Font Style"), callback_data="set_anime_font")],
-        [InlineKeyboardButton(apply_small_caps("Ongoing Anime"), callback_data="set_anime_ongoing")],
-        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="settings_main")]
+        [InlineKeyboardButton(apply_small_caps("Caption"), callback_data="set_anime_caption", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Buttons"), callback_data="set_anime_buttons", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Template"), callback_data="set_anime_template", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Branding"), callback_data="set_anime_branding", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Font Style"), callback_data="set_anime_font", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Ongoing Anime"), callback_data="set_anime_ongoing", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="settings_main", style=ButtonStyle.PRIMARY)]
     ])
     try:
         await query.edit_message_media(media=InputMediaPhoto(TEMPLATE_PIC, caption=header + get_anime_settings_text(current_branding=current_brand_text)), reply_markup=keyboard)
