@@ -48,12 +48,11 @@ def colorize_template_2(template_img, new_hex):
 
     max_c = np.max(arr[:,:,:3], axis=2)
     min_c = np.min(arr[:,:,:3], axis=2)
-    # Avoid division by zero
-    saturation = np.where(max_c == 0, 0, (max_c - min_c) / max_c)
+    saturation = max_c - min_c
 
-    # In Poster 2, everything that has a significant color saturation is either the
-    # default turquoise background elements or the purple button. We want them all to match the theme.
-    mask = saturation > 0.20
+    # Very simple color isolation for turquoise & purple on Template 2
+    # Adjust this threshold as needed based on actual template colors
+    mask = saturation > 30
 
     arr[:,:,0][mask] = new_r
     arr[:,:,1][mask] = new_g
@@ -61,7 +60,7 @@ def colorize_template_2(template_img, new_hex):
 
     return Image.fromarray(arr)
 
-async def generate_poster(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", template_version=1):
+async def generate_poster_1(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", template_version=1):
 
     if custom_image_path:
         anime_img = Image.open(custom_image_path).convert('RGBA')
@@ -101,37 +100,14 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     if template_version == 2 and color_hex:
         base_template = colorize_template_2(base_template, color_hex).convert('RGBA')
 
-    if template_version == 2:
-        if custom_image_path:
-            # Custom transparent image over turquoise template
-            final_img = base_template.copy()
-            # Try to handle it as a transparent overlay, fit it nicely on the right side if needed,
-            # or just paste it centered. Standard fanart dimensions are 16:9.
-            # But they said: "The character should be placed dynamically over the turquoise base template."
-            # And "support .png files with transparent/erased backgrounds properly (using RGBA alpha compositing)"
-            # Let's fit the character on the right side of the template.
-            # The turquoise template size is 1920x1080.
-
-            # Since it's a character render, resize height to match template height roughly
-            # and paste on the right side
-            char_ratio = anime_img.width / anime_img.height
-            new_height = base_template.height
-            new_width = int(new_height * char_ratio)
-            anime_img_resized = anime_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-            # Place on the right, say x = 1920 - new_width (or a bit shifted)
-            paste_x = max(base_template.width - new_width - 100, 500) # Ensure it doesn't overlap text too much
-            paste_y = 0
-
-            # Alpha composite
-            final_img.alpha_composite(anime_img_resized, (paste_x, paste_y))
-        else:
-            # No custom image, fallback to standard fanart image behind the template
-            anime_artwork = ImageOps.fit(anime_img, base_template.size, method=Image.Resampling.LANCZOS)
-            anime_artwork = enhance_image(anime_artwork)
-            final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
-            final_img.paste(anime_artwork, (0, 0))
-            final_img.paste(base_template, (0, 0), base_template)
+    # If Poster 2 AND no custom image is sent (i.e. skipped fanart)
+    # Then DO NOT punch out the mask. The fanart should sit cleanly below without hexagonal cutout.
+    if template_version == 2 and not custom_image_path:
+        anime_artwork = ImageOps.fit(anime_img, base_template.size, method=Image.Resampling.LANCZOS)
+        anime_artwork = enhance_image(anime_artwork)
+        final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+        final_img.paste(anime_artwork, (0, 0))
+        final_img.paste(base_template, (0, 0), base_template)
     else:
         try:
             fetched_mask = Image.open(HEX_MASK_PATH).convert('L')
@@ -264,18 +240,10 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     y_dynamic_offset += 30 if template_version == 2 else 20
     draw.text((x_offset, y_dynamic_offset), genres_caps, font=font_genres, fill=color_hex)
 
-    if template_version == 2:
-        # In Poster 2, the bounding box for synopsis is tighter to fit within the light blue box.
-        # We need a max of around 4 lines, approx 35 characters per line
-        synopsis_dynamic_max_chars = 140 - ((len(title_lines) - 1) * 35)
-        if len(synopsis) > synopsis_dynamic_max_chars:
-            synopsis = synopsis[:synopsis_dynamic_max_chars].rsplit(' ', 1)[0] + "...read more"
-        wrapped_synopsis = textwrap.fill(synopsis, width=38)
-    else:
-        synopsis_dynamic_max_chars = 220 - ((len(title_lines) - 1) * 60)
-        if len(synopsis) > synopsis_dynamic_max_chars:
-            synopsis = synopsis[:synopsis_dynamic_max_chars].rsplit(' ', 1)[0] + "...read more"
-        wrapped_synopsis = textwrap.fill(synopsis, width=45)
+    synopsis_dynamic_max_chars = 220 - ((len(title_lines) - 1) * 60)
+    if len(synopsis) > synopsis_dynamic_max_chars:
+        synopsis = synopsis[:synopsis_dynamic_max_chars].rsplit(' ', 1)[0] + "...read more"
+    wrapped_synopsis = textwrap.fill(synopsis, width=45)
 
     y_dynamic_offset += 70 if template_version == 2 else 60
     draw.text((x_offset, y_dynamic_offset), wrapped_synopsis, font=font_synopsis, fill="#D3D3D3")
@@ -299,3 +267,183 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     final_img.save(buf, format='PNG')
     buf.seek(0)
     return buf
+
+
+async def generate_poster_2(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00"):
+    if custom_image_path:
+        anime_img = Image.open(custom_image_path).convert('RGBA')
+    elif anime_img_url:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(anime_img_url) as resp:
+                    anime_img_data = await resp.read()
+                    anime_img = Image.open(io.BytesIO(anime_img_data)).convert('RGBA')
+            except Exception:
+                anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
+    else:
+        anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
+
+    base_template = None
+    if template_url and template_url.startswith("http"):
+        try:
+            async with aiohttp.ClientSession() as session:
+                if "ibb.co" in template_url and not template_url.endswith(('.png', '.jpg', '.jpeg')):
+                    async with session.get(template_url) as html_resp:
+                        if html_resp.status == 200:
+                            html = await html_resp.text()
+                            match = re.search(r'<meta property="og:image" content="([^"]+)"', html)
+                            if match:
+                                template_url = match.group(1)
+
+                async with session.get(template_url) as resp:
+                    if resp.status == 200:
+                        template_data = await resp.read()
+                        base_template = Image.open(io.BytesIO(template_data)).convert('RGBA')
+        except Exception:
+            pass
+
+    if not base_template:
+        base_template = Image.open(TEMPLATE_PATH).convert('RGBA')
+
+    if color_hex:
+        base_template = colorize_template_2(base_template, color_hex).convert('RGBA')
+
+    if custom_image_path:
+        # Custom transparent image over turquoise template
+        final_img = base_template.copy()
+
+        char_ratio = anime_img.width / anime_img.height
+        new_height = base_template.height
+        new_width = int(new_height * char_ratio)
+        anime_img_resized = anime_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Place on the right
+        paste_x = max(base_template.width - new_width - 100, 500)
+        paste_y = 0
+
+        # Alpha composite
+        final_img.alpha_composite(anime_img_resized, (paste_x, paste_y))
+    else:
+        # No custom image, fallback to standard fanart image behind the template
+        anime_artwork = ImageOps.fit(anime_img, base_template.size, method=Image.Resampling.LANCZOS)
+        anime_artwork = enhance_image(anime_artwork)
+        final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+        final_img.paste(anime_artwork, (0, 0))
+        final_img.paste(base_template, (0, 0), base_template)
+
+    draw = ImageDraw.Draw(final_img)
+
+    logo_img = None
+    if logo_url:
+        try:
+            if logo_url.startswith("http"):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(logo_url) as resp:
+                        if resp.status == 200:
+                            logo_data = await resp.read()
+                            logo_img = Image.open(io.BytesIO(logo_data)).convert('RGBA')
+            elif os.path.exists(logo_url):
+                logo_img = Image.open(logo_url).convert('RGBA')
+        except Exception:
+            pass
+
+    genres_caps = genres.upper() if genres else ""
+
+    if small_caps:
+        genres_caps = apply_small_caps(genres_caps)
+        synopsis = apply_small_caps(synopsis)
+        username = apply_small_caps(username)
+
+    try:
+        font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 85)
+        font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 65)
+    except:
+        font_main_white = font_colored_title = ImageFont.load_default()
+
+    try:
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 35)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
+    except:
+        try:
+            font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
+            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
+            font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 40)
+        except:
+            font_genres = font_synopsis = font_brand = ImageFont.load_default()
+
+    title = title.upper()
+    title = re.sub(r'(?i)\bSEASON\s+(\d+)', r'S\1', title)
+
+    wrapped_title = textwrap.fill(title, width=17)
+    title_lines = wrapped_title.split('\n')
+
+    # 2-Line Limit Rule!
+    if len(title_lines) > 2:
+        title_lines = title_lines[:2]
+        if len(title_lines[1]) > 14:
+            title_lines[1] = title_lines[1][:14] + "..."
+        else:
+            title_lines[1] = title_lines[1] + "..."
+
+    x_offset = 80
+    y_dynamic_offset = 280
+
+    try:
+        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 75)
+    except:
+        font_colored_title_enlarged = font_colored_title
+
+    for i, line in enumerate(title_lines):
+        if i == 0:
+            fill_color = "grey"
+            draw.text((x_offset, y_dynamic_offset), line, font=font_main_white, fill=fill_color)
+            y_dynamic_offset += 100
+        else:
+            draw.text((x_offset, y_dynamic_offset), line, font=font_colored_title_enlarged, fill=color_hex)
+            y_dynamic_offset += 85
+
+    y_dynamic_offset += 30
+    draw.text((x_offset, y_dynamic_offset), genres_caps, font=font_genres, fill=color_hex)
+
+    # In Poster 2, the bounding box for synopsis is tighter to fit within the light blue box.
+    # We need a max of around 4 lines, approx 35 characters per line
+    synopsis_dynamic_max_chars = 140 - ((len(title_lines) - 1) * 35)
+    if len(synopsis) > synopsis_dynamic_max_chars:
+        synopsis = synopsis[:synopsis_dynamic_max_chars].rsplit(' ', 1)[0] + "...read more"
+    wrapped_synopsis = textwrap.fill(synopsis, width=38)
+
+    y_dynamic_offset += 70
+    draw.text((x_offset, y_dynamic_offset), wrapped_synopsis, font=font_synopsis, fill="#D3D3D3")
+
+    brand_x = 80
+    brand_y = 60
+
+    if logo_img:
+        try:
+            logo_img = clean_logo(logo_img)
+            logo_img = logo_img.resize((80, 80), Image.Resampling.LANCZOS).convert('RGBA')
+            final_img.paste(logo_img, (brand_x, brand_y), logo_img)
+            brand_x += 100
+        except Exception:
+            pass
+
+    # Draw username with split colors
+    brand_parts = username.split(' ', 1)
+    if len(brand_parts) == 2:
+        draw.text((brand_x, brand_y + 15), brand_parts[0], font=font_brand, fill='grey')
+        first_word_width = draw.textlength(brand_parts[0] + " ", font=font_brand)
+        draw.text((brand_x + first_word_width, brand_y + 15), brand_parts[1], font=font_brand, fill=color_hex)
+    else:
+        draw.text((brand_x, brand_y + 15), username, font=font_brand, fill=color_hex)
+
+    buf = io.BytesIO()
+    final_img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+async def generate_poster(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", template_version=1):
+    if template_version == 2:
+        return await generate_poster_2(anime_img_url, custom_image_path, title, genres, synopsis, username, logo_url, crop_state, small_caps, template_url, color_hex)
+    else:
+        return await generate_poster_1(anime_img_url, custom_image_path, title, genres, synopsis, username, logo_url, crop_state, small_caps, template_url, color_hex, template_version)

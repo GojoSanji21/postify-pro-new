@@ -385,6 +385,11 @@ async def build_final_poster(client, callback_query, user_id):
 
     final_username = custom_text if custom_text else fallback_name
 
+    try:
+        user_template_pref = await db.get_anime_template(user_id)
+    except:
+        user_template_pref = 1
+
     poster_buf = await generate_poster(
         anime_img_url=image_url if not custom_image_path else None,
         custom_image_path=custom_image_path,
@@ -396,7 +401,8 @@ async def build_final_poster(client, callback_query, user_id):
         crop_state=crop_state,
         small_caps=False,
         template_url=color_info['url'], 
-        color_hex=color_info['hex']
+        color_hex=color_info['hex'],
+        template_version=user_template_pref
     )
 
     try:
@@ -622,15 +628,15 @@ def parse_anime_buttons(config_str: str, target_link: str) -> InlineKeyboardMark
                 btn_text = parts[0].strip()
                 style = ButtonStyle.DEFAULT
 
-                if btn_text.startswith('#p '):
+                if btn_text.startswith('#p'):
                     style = ButtonStyle.PRIMARY
-                    btn_text = btn_text[3:]
-                elif btn_text.startswith('#g '):
+                    btn_text = btn_text[2:].strip()
+                elif btn_text.startswith('#g'):
                     style = ButtonStyle.SUCCESS
-                    btn_text = btn_text[3:]
-                elif btn_text.startswith('#r '):
+                    btn_text = btn_text[2:].strip()
+                elif btn_text.startswith('#r'):
                     style = ButtonStyle.DANGER
-                    btn_text = btn_text[3:]
+                    btn_text = btn_text[2:].strip()
                 elif btn_text.startswith('#'):
                     btn_text = btn_text.split(' ', 1)[1] if ' ' in btn_text else btn_text
 
