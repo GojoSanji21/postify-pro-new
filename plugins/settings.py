@@ -230,6 +230,8 @@ async def anime_template_cb(client: Client, query: CallbackQuery):
 async def anime_template_1_cb(client: Client, query: CallbackQuery):
     await query.answer("Previewing Template 1...", show_alert=False)
     header = get_header("Template Settings")
+    from databases.database import db
+    await db.set_anime_template(query.from_user.id, 1)
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(apply_small_caps("✅ Template 1 (Main)"), callback_data="set_anime_template_1")],
@@ -250,7 +252,7 @@ async def anime_template_2_cb(client: Client, query: CallbackQuery):
     await query.answer("Previewing Poster 2...", show_alert=False)
     header = get_header("Template Settings")
     from databases.database import db
-    await db.set_anime_template(query.from_user.id, "Poster 2")
+    await db.set_anime_template(query.from_user.id, 2)
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(apply_small_caps("Template 1 (Main)"), callback_data="set_anime_template_1")],
