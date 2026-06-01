@@ -530,16 +530,11 @@ async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
             chat_id=user_id,
             photo=poster_buf,
             caption=caption,
-            parse_mode=ParseMode.HTML
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
         )
         
         user_data[user_id]['photo_msg_id'] = photo_msg.id
-        
-        await client.send_message(
-            chat_id=user_id,
-            text=f"⚙️ **{apply_small_caps('POSTER CONTROLS:')}**\nUse buttons below to modify your poster:",
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-        )
 
     except Exception as e:
         await client.send_message(chat_id=user_id, text=f"Generation failed: {e}")
