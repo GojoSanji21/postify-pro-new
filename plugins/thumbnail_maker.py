@@ -399,18 +399,18 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
 
     try:
         font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 45)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 35)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
         font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
     except:
         try:
             font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 45)
-            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
+            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
             font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 40)
         except:
             font_genres = font_synopsis = font_brand = ImageFont.load_default()
 
     title = title.upper()
-    title = re.sub(r'(?i)SEASON\s+(\d+)', r'S', title)
+    title = re.sub(r'(?i)\bSEASON\s+(\d+)', r'S\1', title)
     wrapped_title = textwrap.fill(title, width=17)
     title_lines = wrapped_title.split('\n')
 
@@ -422,7 +422,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
             title_lines[1] = title_lines[1] + "..."
 
     x_offset = 80
-    y_dynamic_offset = 280
+    y_dynamic_offset = 320
 
     try:
         font_colored_title_enlarged = font_colored_title
@@ -442,7 +442,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
 
     # Strict bounding box for synopsis (light cyan box)
     box_x = 90
-    box_y = 570
+    box_y = 615
     box_w = 800
     box_h = 180
 
@@ -465,7 +465,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     # Calculate max lines based on exact pixel height
     # Approximate line height
     line_spacing = 5
-    line_h = 40  # Rough height for size 35 font
+    line_h = 35  # Rough height for size 30 font
     max_lines = box_h // (line_h + line_spacing)
 
     if len(lines) > max_lines:
