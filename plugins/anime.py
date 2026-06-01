@@ -392,8 +392,12 @@ async def build_final_poster(client, callback_query, user_id):
         template_v = 1
 
     if template_v == 2:
-        from plugins.thumbnail_maker import generate_poster_2
-        gen_func = generate_poster_2
+        try:
+            from plugins.thumbnail_maker import generate_poster_2
+            gen_func = generate_poster_2
+        except ImportError:
+            from plugins.thumbnail_maker import generate_poster
+            gen_func = generate_poster
     else:
         from plugins.thumbnail_maker import generate_poster
         gen_func = generate_poster
