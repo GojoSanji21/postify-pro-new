@@ -20,3 +20,5 @@ shortzy
 aiofiles
 asyncio
 Pillow
+numpy
+opencv-python-headless
