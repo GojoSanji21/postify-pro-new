@@ -402,19 +402,42 @@ async def build_final_poster(client, callback_query, user_id):
         from plugins.thumbnail_maker import generate_poster
         gen_func = generate_poster
 
-    poster_buf = await gen_func(
-        anime_img_url=image_url if not custom_image_path else None,
-        custom_image_path=custom_image_path,
-        title=title,
-        genres=genres,
-        synopsis=synopsis,
-        username=final_username,
-        logo_url=custom_logo,    
-        crop_state=crop_state,
-        small_caps=False,
-        template_url=color_info['url'], 
-        color_hex=color_info['hex']
-    )
+    # Get offset and zoom values
+    offset_x = user_data[user_id].get('offset_x', 0)
+    offset_y = user_data[user_id].get('offset_y', 0)
+    zoom_scale = user_data[user_id].get('zoom_scale', 1.0)
+
+    if template_v == 2:
+        poster_buf = await gen_func(
+            anime_img_url=image_url if not custom_image_path else None,
+            custom_image_path=custom_image_path,
+            title=title,
+            genres=genres,
+            synopsis=synopsis,
+            username=final_username,
+            logo_url=custom_logo,
+            crop_state=crop_state,
+            small_caps=False,
+            template_url=color_info['url'],
+            color_hex=color_info['hex'],
+            offset_x=offset_x,
+            offset_y=offset_y,
+            zoom_scale=zoom_scale
+        )
+    else:
+        poster_buf = await gen_func(
+            anime_img_url=image_url if not custom_image_path else None,
+            custom_image_path=custom_image_path,
+            title=title,
+            genres=genres,
+            synopsis=synopsis,
+            username=final_username,
+            logo_url=custom_logo,
+            crop_state=crop_state,
+            small_caps=False,
+            template_url=color_info['url'],
+            color_hex=color_info['hex']
+        )
 
     try:
         caption_template = await db.get_caption(user_id)

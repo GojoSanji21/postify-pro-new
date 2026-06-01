@@ -27,11 +27,23 @@ def clean_logo(img):
     return white_img
 
 def enhance_image(img):
-    img = img.convert("RGB")
-    img = ImageEnhance.Sharpness(img).enhance(2.0)
-    img = ImageEnhance.Contrast(img).enhance(1.2)
-    img = ImageEnhance.Color(img).enhance(1.2)
-    return img.convert("RGBA")
+    original_mode = img.mode
+    has_alpha = original_mode == "RGBA" or "A" in img.getbands()
+
+    if has_alpha:
+        r, g, b, a = img.split()
+        rgb_img = Image.merge("RGB", (r, g, b))
+    else:
+        rgb_img = img.convert("RGB")
+
+    rgb_img = ImageEnhance.Sharpness(rgb_img).enhance(2.0)
+    rgb_img = ImageEnhance.Contrast(rgb_img).enhance(1.2)
+    rgb_img = ImageEnhance.Color(rgb_img).enhance(1.2)
+
+    if has_alpha:
+        r, g, b = rgb_img.split()
+        return Image.merge("RGBA", (r, g, b, a))
+    return rgb_img.convert("RGBA")
 
 def apply_small_caps(text):
     if not text: return text
@@ -224,7 +236,7 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     y_dynamic_offset = 280
 
     try:
-        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 75)
+        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Montserrat-Black.ttf"), 75)
     except:
         font_colored_title_enlarged = font_colored_title
 
@@ -302,11 +314,23 @@ def clean_logo(img):
     return white_img
 
 def enhance_image(img):
-    img = img.convert("RGB")
-    img = ImageEnhance.Sharpness(img).enhance(2.0)
-    img = ImageEnhance.Contrast(img).enhance(1.2)
-    img = ImageEnhance.Color(img).enhance(1.2)
-    return img.convert("RGBA")
+    original_mode = img.mode
+    has_alpha = original_mode == "RGBA" or "A" in img.getbands()
+
+    if has_alpha:
+        r, g, b, a = img.split()
+        rgb_img = Image.merge("RGB", (r, g, b))
+    else:
+        rgb_img = img.convert("RGB")
+
+    rgb_img = ImageEnhance.Sharpness(rgb_img).enhance(2.0)
+    rgb_img = ImageEnhance.Contrast(rgb_img).enhance(1.2)
+    rgb_img = ImageEnhance.Color(rgb_img).enhance(1.2)
+
+    if has_alpha:
+        r, g, b = rgb_img.split()
+        return Image.merge("RGBA", (r, g, b, a))
+    return rgb_img.convert("RGBA")
 
 def colorize_poster_2_template(template_img, color_hex):
     arr = np.array(template_img)
@@ -331,7 +355,7 @@ def colorize_poster_2_template(template_img, color_hex):
 
     return Image.fromarray(arr)
 
-async def generate_poster_2(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00"):
+async def generate_poster_2(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", offset_x=0, offset_y=0, zoom_scale=1.0):
     # Load anime image
     if custom_image_path:
         anime_img = Image.open(custom_image_path).convert('RGBA')
@@ -375,20 +399,34 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     if color_hex:
         base_template = colorize_poster_2_template(base_template, color_hex).convert('RGBA')
 
+    # Universal Zoom Fit Setup
     char_w, char_h = anime_img.size
     aspect_ratio = char_w / char_h
-    new_h = 1080
+
+    # Calculate base zoom size
+    new_h = int(1080 * zoom_scale)
     new_w = int(new_h * aspect_ratio)
+
+    # crop_state changes baseline alignment
+    if crop_state == 0: # Center
+        base_x = (1920 - new_w) // 2
+    elif crop_state == 1: # Right
+        base_x = 1920 - new_w
+    else: # Left
+        base_x = 0
+
+    base_y = (1080 - new_h) // 2
+
+    # Apply offsets
+    paste_x = base_x + offset_x
+    paste_y = base_y + offset_y
 
     anime_artwork = anime_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
     anime_artwork = enhance_image(anime_artwork)
 
     final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
     final_img.paste(base_template, (0, 0))
-
-    # Place on the right side
-    paste_x = max(0, 1920 - new_w)
-    final_img.paste(anime_artwork, (paste_x, 0), anime_artwork if anime_artwork.mode == 'RGBA' else None)
+    final_img.paste(anime_artwork, (paste_x, paste_y), anime_artwork if anime_artwork.mode == 'RGBA' else None)
 
     draw = ImageDraw.Draw(final_img)
 
@@ -443,7 +481,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     y_dynamic_offset = 280
 
     try:
-        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 75)
+        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Montserrat-Black.ttf"), 75)
     except:
         font_colored_title_enlarged = font_colored_title
 
