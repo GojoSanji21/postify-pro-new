@@ -440,13 +440,46 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     y_dynamic_offset += 30
     draw.text((x_offset, y_dynamic_offset), genres_caps, font=font_genres, fill=color_hex)
 
-    synopsis_dynamic_max_chars = 220 - ((len(title_lines) - 1) * 60)
-    if len(synopsis) > synopsis_dynamic_max_chars:
-        synopsis = synopsis[:synopsis_dynamic_max_chars].rsplit(' ', 1)[0] + "...read more"
+    # Strict bounding box for synopsis (light cyan box)
+    box_x = 90
+    box_y = 570
+    box_w = 800
+    box_h = 180
 
-    wrapped_synopsis = textwrap.fill(synopsis, width=45)
-    y_dynamic_offset += 70
-    draw.text((x_offset, y_dynamic_offset), wrapped_synopsis, font=font_synopsis, fill="#333333")
+    # Calculate word wrap based on exact pixel width
+    words = synopsis.split(' ')
+    lines = []
+    current_line = []
+
+    for word in words:
+        current_line.append(word)
+        # Check width
+        w = draw.textlength(' '.join(current_line), font=font_synopsis)
+        if w > box_w:
+            current_line.pop()
+            lines.append(' '.join(current_line))
+            current_line = [word]
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    # Calculate max lines based on exact pixel height
+    # Approximate line height
+    line_spacing = 5
+    line_h = 40  # Rough height for size 35 font
+    max_lines = box_h // (line_h + line_spacing)
+
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        # Truncate the last line properly
+        last_line = lines[-1]
+        while draw.textlength(last_line + "...read more", font=font_synopsis) > box_w and len(last_line) > 0:
+            last_line = last_line[:-1]
+        lines[-1] = last_line.strip() + "...read more"
+
+    wrapped_synopsis = "\n".join(lines)
+
+    # Draw inside the specific box coordinates, completely overriding dynamic Y
+    draw.text((box_x, box_y), wrapped_synopsis, font=font_synopsis, fill="#333333")
 
     brand_x = 80
     brand_y = 60
