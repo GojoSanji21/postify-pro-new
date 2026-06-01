@@ -194,24 +194,24 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     # ==========================================
     try:
         if template_version == 2:
-            font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 85)
-            font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 65)
+            font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 85)
+            font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 65)
         else:
-            font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 85)
-            font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 65)
+            font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 85)
+            font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 65)
     except:
         font_main_white = font_colored_title = ImageFont.load_default()
 
     try:
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 35)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
-        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 35)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 30)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 40)
     except:
         try:
             # Agar Medium upload nahi kiya, toh Bold ko chhota karke use kar lega (Lekin microscopic nahi hoga)
-            font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
-            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
-            font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 40)
+            font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 35)
+            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 30)
+            font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 40)
         except:
             font_genres = font_synopsis = font_brand = ImageFont.load_default()
 
@@ -236,7 +236,7 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     y_dynamic_offset = 280
 
     try:
-        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Montserrat-Black.ttf"), 75)
+        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 75)
     except:
         font_colored_title_enlarged = font_colored_title
 
@@ -399,25 +399,15 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     if color_hex:
         base_template = colorize_poster_2_template(base_template, color_hex).convert('RGBA')
 
-    # Universal Zoom Fit Setup
     char_w, char_h = anime_img.size
     aspect_ratio = char_w / char_h
 
-    # Calculate base zoom size
     new_h = int(1080 * zoom_scale)
     new_w = int(new_h * aspect_ratio)
 
-    # crop_state changes baseline alignment
-    if crop_state == 0: # Center
-        base_x = (1920 - new_w) // 2
-    elif crop_state == 1: # Right
-        base_x = 1920 - new_w
-    else: # Left
-        base_x = 0
-
+    base_x = 1920 - new_w
     base_y = (1080 - new_h) // 2
 
-    # Apply offsets
     paste_x = base_x + offset_x
     paste_y = base_y + offset_y
 
@@ -452,17 +442,22 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
 
     # Font Setup
     try:
-        font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 85)
-        font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 65)
+        font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 100)
+        font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 110)
     except:
         font_main_white = font_colored_title = ImageFont.load_default()
 
     try:
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 35)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
-        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 45)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 35)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 40)
     except:
-        font_genres = font_synopsis = font_brand = ImageFont.load_default()
+        try:
+            font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 45)
+            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 35)
+            font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 40)
+        except:
+            font_genres = font_synopsis = font_brand = ImageFont.load_default()
 
     # Title Processing
     title = title.upper()
@@ -481,14 +476,14 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     y_dynamic_offset = 280
 
     try:
-        font_colored_title_enlarged = ImageFont.truetype(os.path.join(FONTS_DIR, "Montserrat-Black.ttf"), 75)
+        font_colored_title_enlarged = font_colored_title
     except:
         font_colored_title_enlarged = font_colored_title
 
     # Draw Title
     for i, line in enumerate(title_lines):
         if i == 0:
-            draw.text((x_offset, y_dynamic_offset), line, font=font_main_white, fill="white")
+            draw.text((x_offset, y_dynamic_offset), line, font=font_main_white, fill="#333333")
             y_dynamic_offset += 100
         else:
             draw.text((x_offset, y_dynamic_offset), line, font=font_colored_title_enlarged, fill=color_hex)
@@ -504,7 +499,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
 
     wrapped_synopsis = textwrap.fill(synopsis, width=45)
     y_dynamic_offset += 70
-    draw.text((x_offset, y_dynamic_offset), wrapped_synopsis, font=font_synopsis, fill="#D3D3D3")
+    draw.text((x_offset, y_dynamic_offset), wrapped_synopsis, font=font_synopsis, fill="#333333")
 
     # Branding Processing
     brand_x = 80
