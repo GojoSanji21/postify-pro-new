@@ -8,7 +8,7 @@ from bot import Bot
 from pyrogram import __version__
 from plugins.FORMATS import *
 from config import *
-from pyrogram.enums import ParseMode, ChatAction
+from pyrogram.enums import ParseMode, ChatAction, ButtonStyle
 from plugins.autoDelete import convert_time
 from databases.database import db
 from datetime import timedelta
@@ -161,7 +161,7 @@ async def cb_handler(client: Bot, query: CallbackQuery):
                             )
             ),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton('• ʙᴀᴄᴋ', callback_data='start'), InlineKeyboardButton('sᴛᴀᴛs •', callback_data='setting')]
+                [InlineKeyboardButton('• ʙᴀᴄᴋ', callback_data='start', style=ButtonStyle.PRIMARY), InlineKeyboardButton('sᴛᴀᴛs •', callback_data='setting')]
             ]),
         )
                 
@@ -217,8 +217,8 @@ async def cb_handler(client: Bot, query: CallbackQuery):
                 )
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton('• ʙᴀᴄᴋ', callback_data='start'), InlineKeyboardButton(
-                        'ᴄʟᴏsᴇ •', callback_data='close')]
+                    [InlineKeyboardButton('• ʙᴀᴄᴋ', callback_data='start', style=ButtonStyle.PRIMARY), InlineKeyboardButton(
+                        'ᴄʟᴏsᴇ •', callback_data='close', style=ButtonStyle.PRIMARY)]
                 ]),
             )
         except Exception as e:
@@ -236,10 +236,10 @@ async def cb_handler(client: Bot, query: CallbackQuery):
             )
             ),
             reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("• ᴄʟɪᴄᴋ ғᴏʀ ᴍᴏʀᴇ •", callback_data='about')],
-                    [InlineKeyboardButton("• sᴇᴛᴛɪɴɢs", callback_data='setting'),
-                     InlineKeyboardButton('ᴘᴏsᴛᴇʀ', callback_data='settings_main')],
-                    [InlineKeyboardButton("➕ ᴀᴅᴅ ᴄʜᴀɴɴᴇʟ", callback_data='add_channel_req')],
+                    [InlineKeyboardButton("ᴄʟɪᴄᴋ ғᴏʀ ᴍᴏʀᴇ", callback_data='about', style=ButtonStyle.PRIMARY)],
+                    [InlineKeyboardButton("sᴇᴛᴛɪɴɢs", callback_data='setting', style=ButtonStyle.DANGER),
+                     InlineKeyboardButton('ᴘᴏsᴛᴇʀ', callback_data='settings_main', style=ButtonStyle.DANGER)],
+                    [InlineKeyboardButton("➕ ᴀᴅᴅ ᴄʜᴀɴɴᴇʟ", callback_data='add_channel_req', style=ButtonStyle.SUCCESS)],
                 ]),
         )
 

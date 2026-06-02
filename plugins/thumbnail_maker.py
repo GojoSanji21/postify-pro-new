@@ -27,11 +27,23 @@ def clean_logo(img):
     return white_img
 
 def enhance_image(img):
-    img = img.convert("RGB")
-    img = ImageEnhance.Sharpness(img).enhance(2.0)
-    img = ImageEnhance.Contrast(img).enhance(1.2)
-    img = ImageEnhance.Color(img).enhance(1.2)
-    return img.convert("RGBA")
+    original_mode = img.mode
+    has_alpha = original_mode == "RGBA" or "A" in img.getbands()
+
+    if has_alpha:
+        r, g, b, a = img.split()
+        rgb_img = Image.merge("RGB", (r, g, b))
+    else:
+        rgb_img = img.convert("RGB")
+
+    rgb_img = ImageEnhance.Sharpness(rgb_img).enhance(2.0)
+    rgb_img = ImageEnhance.Contrast(rgb_img).enhance(1.2)
+    rgb_img = ImageEnhance.Color(rgb_img).enhance(1.2)
+
+    if has_alpha:
+        r, g, b = rgb_img.split()
+        return Image.merge("RGBA", (r, g, b, a))
+    return rgb_img.convert("RGBA")
 
 def apply_small_caps(text):
     if not text: return text
@@ -254,14 +266,247 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     if logo_img:
         try:
             logo_img = clean_logo(logo_img)
-            logo_img = logo_img.resize((80, 80), Image.Resampling.LANCZOS).convert('RGBA')
+            logo_img.thumbnail((95, 95), Image.Resampling.LANCZOS)
+            logo_img = logo_img.convert('RGBA')
             final_img.paste(logo_img, (brand_x, brand_y), logo_img)
-            brand_x += 100 
+            brand_x += 115
         except Exception:
             pass 
 
     brand_color = color_hex if template_version == 2 else "white"
     draw.text((brand_x, brand_y + 15), username, font=font_brand, fill=brand_color)
+
+    buf = io.BytesIO()
+    final_img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+
+def colorize_poster_2_template(template_img, color_hex):
+    import numpy as np
+    import cv2
+    from PIL import Image
+
+    arr = np.array(template_img)
+    target_hex = color_hex.lstrip('#')
+    new_r, new_g, new_b = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
+
+    hsv = cv2.cvtColor(arr[:,:,:3], cv2.COLOR_RGB2HSV)
+
+    target_color_img = np.uint8([[[new_r, new_g, new_b]]])
+    target_hsv = cv2.cvtColor(target_color_img, cv2.COLOR_RGB2HSV)[0][0]
+    target_h = target_hsv[0]
+
+    mask = hsv[:,:,1] > 50
+
+    hsv[:,:,0][mask] = target_h
+
+    arr[:,:,:3] = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+    return Image.fromarray(arr)
+
+
+async def generate_poster_2(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", offset_x=0, offset_y=0, zoom_scale=1.0):
+    if custom_image_path:
+        anime_img = Image.open(custom_image_path).convert('RGBA')
+    elif anime_img_url:
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(anime_img_url) as resp:
+                    anime_img_data = await resp.read()
+                    anime_img = Image.open(io.BytesIO(anime_img_data)).convert('RGBA')
+            except Exception:
+                anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
+    else:
+        anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
+
+    base_template_url = "https://ibb.co/N6r6n2Fp"
+    base_template = None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            if "ibb.co" in base_template_url and not base_template_url.endswith(('.png', '.jpg', '.jpeg')):
+                async with session.get(base_template_url) as html_resp:
+                    if html_resp.status == 200:
+                        html = await html_resp.text()
+                        match = re.search(r'<meta property="og:image" content="([^"]+)"', html)
+                        if match:
+                            base_template_url = match.group(1)
+
+            async with session.get(base_template_url) as resp:
+                if resp.status == 200:
+                    template_data = await resp.read()
+                    base_template = Image.open(io.BytesIO(template_data)).convert('RGBA')
+    except Exception:
+        pass
+
+    if not base_template:
+        base_template = Image.open(os.path.join(os.path.dirname(__file__), "assets", "template.png")).convert('RGBA')
+
+    if color_hex:
+        base_template = colorize_poster_2_template(base_template, color_hex).convert('RGBA')
+
+    char_w, char_h = anime_img.size
+    aspect_ratio = char_w / char_h
+
+    new_h = int(1080 * zoom_scale)
+    new_w = int(new_h * aspect_ratio)
+
+    if crop_state == 0: # Center
+        base_x = (1920 - new_w) // 2
+    elif crop_state == 1: # Right
+        base_x = 1920 - new_w
+    else: # Left
+        base_x = 0
+
+    base_y = (1080 - new_h) // 2
+
+    paste_x = base_x + offset_x
+    paste_y = base_y + offset_y
+
+    anime_artwork = anime_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    anime_artwork = enhance_image(anime_artwork)
+
+    final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+    final_img.paste(base_template, (0, 0))
+    final_img.paste(anime_artwork, (paste_x, paste_y), anime_artwork if anime_artwork.mode == 'RGBA' else None)
+
+    draw = ImageDraw.Draw(final_img)
+
+    logo_img = None
+    if logo_url:
+        try:
+            if logo_url.startswith("http"):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(logo_url) as resp:
+                        if resp.status == 200:
+                            logo_data = await resp.read()
+                            logo_img = Image.open(io.BytesIO(logo_data)).convert('RGBA')
+            elif os.path.exists(logo_url):
+                logo_img = Image.open(logo_url).convert('RGBA')
+        except Exception:
+            pass
+
+    genres_caps = genres.upper() if genres else ""
+    if small_caps:
+        genres_caps = apply_small_caps(genres_caps)
+        username = apply_small_caps(username)
+
+    try:
+        font_main_white = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 100)
+        font_colored_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 110)
+    except:
+        font_main_white = font_colored_title = ImageFont.load_default()
+
+    try:
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 45)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
+    except:
+        try:
+            font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 45)
+            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
+            font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 40)
+        except:
+            font_genres = font_synopsis = font_brand = ImageFont.load_default()
+
+    title = title.upper()
+    title = re.sub(r'(?i)\bSEASON\s+(\d+)', r'S\1', title)
+    wrapped_title = textwrap.fill(title, width=17)
+    title_lines = wrapped_title.split('\n')
+
+    if len(title_lines) > 2:
+        title_lines = title_lines[:2]
+        if len(title_lines[1]) > 14:
+            title_lines[1] = title_lines[1][:14] + "..."
+        else:
+            title_lines[1] = title_lines[1] + "..."
+
+    x_offset = 80
+    y_dynamic_offset = 360
+
+    try:
+        font_colored_title_enlarged = font_colored_title
+    except:
+        font_colored_title_enlarged = font_colored_title
+
+    for i, line in enumerate(title_lines):
+        if i == 0:
+            draw.text((x_offset, y_dynamic_offset), line, font=font_main_white, fill="#333333")
+            y_dynamic_offset += 100
+        else:
+            draw.text((x_offset, y_dynamic_offset), line, font=font_colored_title_enlarged, fill=color_hex)
+            y_dynamic_offset += 85
+
+    y_dynamic_offset += 30
+    draw.text((x_offset, y_dynamic_offset), genres_caps, font=font_genres, fill=color_hex)
+
+    # Strict bounding box for synopsis (light cyan box)
+    box_x = 70
+    box_y = 640
+    box_w = 800
+    box_h = 180
+
+    # Calculate word wrap based on exact pixel width
+    words = synopsis.split(' ')
+    lines = []
+    current_line = []
+
+    for word in words:
+        current_line.append(word)
+        # Check width
+        w = draw.textlength(' '.join(current_line), font=font_synopsis)
+        if w > box_w:
+            current_line.pop()
+            lines.append(' '.join(current_line))
+            current_line = [word]
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    # Calculate max lines based on exact pixel height
+    # Approximate line height
+    line_spacing = 5
+    line_h = 35  # Rough height for size 30 font
+    max_lines = box_h // (line_h + line_spacing)
+
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        # Truncate the last line properly
+        last_line = lines[-1]
+        while draw.textlength(last_line + "...read more", font=font_synopsis) > box_w and len(last_line) > 0:
+            last_line = last_line[:-1]
+        lines[-1] = last_line.strip() + "...read more"
+
+    wrapped_synopsis = "\n".join(lines)
+
+    # Draw inside the specific box coordinates, completely overriding dynamic Y
+    draw.text((box_x, box_y), wrapped_synopsis, font=font_synopsis, fill="#333333")
+
+    brand_x = 80
+    brand_y = 60
+
+    if logo_img:
+        try:
+            if logo_img.getextrema()[3][0] < 255:
+                logo_img_clean = logo_img
+            else:
+                white_img = Image.new("RGBA", logo_img.size, (255, 255, 255, 255))
+                white_img.putalpha(logo_img.convert("L"))
+                logo_img_clean = white_img
+
+            logo_img_clean.thumbnail((95, 95), Image.Resampling.LANCZOS)
+            logo_img_clean = logo_img_clean.convert('RGBA')
+            final_img.paste(logo_img_clean, (brand_x, brand_y), logo_img_clean)
+            brand_x += 115
+        except Exception:
+            pass
+
+    brand_words = username.split(maxsplit=1)
+    if len(brand_words) > 0:
+        draw.text((brand_x, brand_y + 15), brand_words[0], font=font_brand, fill="grey")
+        if len(brand_words) > 1:
+            w1_length = draw.textlength(brand_words[0] + " ", font=font_brand)
+            draw.text((brand_x + w1_length, brand_y + 15), brand_words[1], font=font_brand, fill=color_hex)
 
     buf = io.BytesIO()
     final_img.save(buf, format='PNG')

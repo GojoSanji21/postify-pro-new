@@ -289,7 +289,7 @@ async def handle_anime_thumb_custom(client: Bot, callback_query: CallbackQuery):
 
     await callback_query.answer("Please send the custom photo now.")
     try:
-        response = await client.ask(user_id, "Send the custom image for the poster now:", filters=filters.photo, timeout=60)
+        response = await client.ask(user_id, "Send the custom image for the poster now:", filters=filters.photo | filters.document, timeout=60)
         photo_path = await response.download()
         user_data[user_id]['custom_image'] = photo_path
         await anime_audio_menu(client, callback_query)
@@ -385,19 +385,69 @@ async def build_final_poster(client, callback_query, user_id):
 
     final_username = custom_text if custom_text else fallback_name
 
-    poster_buf = await generate_poster(
-        anime_img_url=image_url if not custom_image_path else None,
-        custom_image_path=custom_image_path,
-        title=title,
-        genres=genres,
-        synopsis=synopsis,
-        username=final_username,
-        logo_url=custom_logo,    
-        crop_state=crop_state,
-        small_caps=False,
-        template_url=color_info['url'], 
-        color_hex=color_info['hex']
-    )
+    try:
+        from databases.database import db
+        template_v = await db.get_anime_template(user_id)
+    except:
+        template_v = 1
+
+    user_data[user_id]['template_v'] = template_v
+
+
+    # Get offset and zoom values
+    offset_x = user_data[user_id].get('offset_x', 0)
+    offset_y = user_data[user_id].get('offset_y', 0)
+    zoom_scale = user_data[user_id].get('zoom_scale', 1.0)
+
+    if template_v == 2:
+        try:
+            from plugins.thumbnail_maker import generate_poster_2
+            poster_buf = await generate_poster_2(
+                anime_img_url=image_url if not custom_image_path else None,
+                custom_image_path=custom_image_path,
+                title=title,
+                genres=genres,
+                synopsis=synopsis,
+                username=final_username,
+                logo_url=custom_logo,
+                crop_state=crop_state,
+                small_caps=False,
+                template_url=color_info['url'],
+                color_hex=color_info['hex'],
+                offset_x=offset_x,
+                offset_y=offset_y,
+                zoom_scale=zoom_scale
+            )
+        except ImportError:
+            from plugins.thumbnail_maker import generate_poster
+            poster_buf = await generate_poster(
+                anime_img_url=image_url if not custom_image_path else None,
+                custom_image_path=custom_image_path,
+                title=title,
+                genres=genres,
+                synopsis=synopsis,
+                username=final_username,
+                logo_url=custom_logo,
+                crop_state=crop_state,
+                small_caps=False,
+                template_url=color_info['url'],
+                color_hex=color_info['hex']
+            )
+    else:
+        from plugins.thumbnail_maker import generate_poster
+        poster_buf = await generate_poster(
+            anime_img_url=image_url if not custom_image_path else None,
+            custom_image_path=custom_image_path,
+            title=title,
+            genres=genres,
+            synopsis=synopsis,
+            username=final_username,
+            logo_url=custom_logo,
+            crop_state=crop_state,
+            small_caps=False,
+            template_url=color_info['url'],
+            color_hex=color_info['hex']
+        )
 
     try:
         caption_template = await db.get_caption(user_id)
@@ -427,15 +477,31 @@ async def build_final_poster(client, callback_query, user_id):
 
     return poster_buf, caption
 
-def get_final_keyboard(color_state):
+def get_final_keyboard(color_state, template_v=1):
+    from pyrogram.enums import ButtonStyle
     color_name = COLORS[color_state]['name']
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move"),
-         InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next")],
-        [InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color")],
-        [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu"),
-         InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done")]
-    ])
+
+    if template_v == 2:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬆️", callback_data="anime_final_up", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("⬅️", callback_data="anime_final_left", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("⬇️", callback_data="anime_final_down", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("➡️", callback_data="anime_final_right", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("🔍 IN", callback_data="anime_final_zoom_in", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("🔍 OUT", callback_data="anime_final_zoom_out", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
+        ])
+    else:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
+        ])
 
 @Bot.on_callback_query(filters.regex(r"^anime_audio_(.*)"), group=-1)
 async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
@@ -469,11 +535,13 @@ async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
         
         user_data[user_id]['photo_msg_id'] = photo_msg.id
         
-        await client.send_message(
+        from plugins.utils import apply_small_caps
+        controls_msg = await client.send_message(
             chat_id=user_id,
             text=f"⚙️ **{apply_small_caps('POSTER CONTROLS:')}**\nUse buttons below to modify your poster:",
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'])
+            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
         )
+        user_data[user_id]['controls_msg_id'] = controls_msg.id
 
     except Exception as e:
         await client.send_message(chat_id=user_id, text=f"Generation failed: {e}")
@@ -497,10 +565,93 @@ async def handle_anime_final_move(client: Bot, callback_query: CallbackQuery):
             message_id=user_data[user_id]['photo_msg_id'],
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
         )
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
     except Exception:
         pass
     raise StopPropagation
 
+
+@Bot.on_callback_query(filters.regex(r"^anime_final_(up|down|left|right)$"), group=-1)
+async def handle_anime_final_move_dir(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data:
+        return await callback_query.answer("Session expired.", show_alert=True)
+
+    direction = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_final_", "")
+
+    if 'offset_x' not in user_data[user_id]: user_data[user_id]['offset_x'] = 0
+    if 'offset_y' not in user_data[user_id]: user_data[user_id]['offset_y'] = 0
+
+    MOVE_STEP = 50
+    if direction == "up":
+        user_data[user_id]['offset_y'] -= MOVE_STEP
+    elif direction == "down":
+        user_data[user_id]['offset_y'] += MOVE_STEP
+    elif direction == "left":
+        user_data[user_id]['offset_x'] -= MOVE_STEP
+    elif direction == "right":
+        user_data[user_id]['offset_x'] += MOVE_STEP
+
+    await callback_query.answer(f"Moved {direction}", show_alert=False)
+
+    try:
+        poster_buf, caption = await build_final_poster(client, callback_query, user_id)
+        await client.edit_message_media(
+            chat_id=user_id,
+            message_id=user_data[user_id]['photo_msg_id'],
+            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
+        )
+        # Update the separate controls message to maintain state
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
+    except Exception as e:
+        pass
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex(r"^anime_final_zoom_(in|out)$"), group=-1)
+async def handle_anime_final_zoom(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data:
+        return await callback_query.answer("Session expired.", show_alert=True)
+
+    action = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_final_zoom_", "")
+
+    if 'zoom_scale' not in user_data[user_id]: user_data[user_id]['zoom_scale'] = 1.0
+
+    ZOOM_STEP = 0.2
+    if action == "in":
+        user_data[user_id]['zoom_scale'] = min(3.0, user_data[user_id]['zoom_scale'] + ZOOM_STEP)
+    else:
+        user_data[user_id]['zoom_scale'] = max(0.5, user_data[user_id]['zoom_scale'] - ZOOM_STEP)
+
+    await callback_query.answer(f"Zoomed {action} (Scale: {user_data[user_id]['zoom_scale']:.1f}x)", show_alert=False)
+
+    try:
+        poster_buf, caption = await build_final_poster(client, callback_query, user_id)
+        await client.edit_message_media(
+            chat_id=user_id,
+            message_id=user_data[user_id]['photo_msg_id'],
+            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
+        )
+        # Update the separate controls message to maintain state
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
+    except Exception as e:
+        pass
+    raise StopPropagation
 @Bot.on_callback_query(filters.regex("^anime_final_next$"), group=-1)
 async def handle_anime_final_next(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
@@ -517,6 +668,12 @@ async def handle_anime_final_next(client: Bot, callback_query: CallbackQuery):
             message_id=user_data[user_id]['photo_msg_id'],
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
         )
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
     except Exception:
         pass
     raise StopPropagation
@@ -542,7 +699,7 @@ async def handle_anime_final_color(client: Bot, callback_query: CallbackQuery):
         )
         
         await callback_query.edit_message_reply_markup(
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'])
+            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
         )
     except Exception:
         pass
