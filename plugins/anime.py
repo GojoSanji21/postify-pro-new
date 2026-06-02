@@ -536,6 +536,17 @@ async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
         
         user_data[user_id]['photo_msg_id'] = photo_msg.id
 
+        
+        from plugins.utils import apply_small_caps
+        controls_msg = await client.send_message(
+            chat_id=user_id,
+            text=f"⚙️ **{apply_small_caps('POSTER CONTROLS:')}**\nUse buttons below to modify your poster:",
+            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+        )
+        user_data[user_id]['controls_msg_id'] = controls_msg.id
+
+
+
     except Exception as e:
         await client.send_message(chat_id=user_id, text=f"Generation failed: {e}")
 
@@ -558,6 +569,12 @@ async def handle_anime_final_move(client: Bot, callback_query: CallbackQuery):
             message_id=user_data[user_id]['photo_msg_id'],
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
         )
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
     except Exception:
         pass
     raise StopPropagation
@@ -591,9 +608,21 @@ async def handle_anime_final_move_dir(client: Bot, callback_query: CallbackQuery
         await client.edit_message_media(
             chat_id=user_id,
             message_id=user_data[user_id]['photo_msg_id'],
+
+            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
+        )
+        # Update the separate controls message to maintain state
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
+
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML),
             reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
         )
+
     except Exception as e:
         pass
     raise StopPropagation
@@ -621,9 +650,21 @@ async def handle_anime_final_zoom(client: Bot, callback_query: CallbackQuery):
         await client.edit_message_media(
             chat_id=user_id,
             message_id=user_data[user_id]['photo_msg_id'],
+
+            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
+        )
+        # Update the separate controls message to maintain state
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
+           
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML),
             reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
         )
+
     except Exception as e:
         pass
     raise StopPropagation
@@ -643,6 +684,12 @@ async def handle_anime_final_next(client: Bot, callback_query: CallbackQuery):
             message_id=user_data[user_id]['photo_msg_id'],
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
         )
+        if 'controls_msg_id' in user_data[user_id]:
+            await client.edit_message_reply_markup(
+                chat_id=user_id,
+                message_id=user_data[user_id]['controls_msg_id'],
+                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            )
     except Exception:
         pass
     raise StopPropagation

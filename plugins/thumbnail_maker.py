@@ -266,9 +266,10 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     if logo_img:
         try:
             logo_img = clean_logo(logo_img)
-            logo_img = logo_img.resize((80, 80), Image.Resampling.LANCZOS).convert('RGBA')
+            logo_img.thumbnail((95, 95), Image.Resampling.LANCZOS)
+            logo_img = logo_img.convert('RGBA')
             final_img.paste(logo_img, (brand_x, brand_y), logo_img)
-            brand_x += 100 
+            brand_x += 115
         except Exception:
             pass 
 
@@ -422,7 +423,11 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
             title_lines[1] = title_lines[1] + "..."
 
     x_offset = 80
+
+    y_dynamic_offset = 360
+
     y_dynamic_offset = 320
+
 
     try:
         font_colored_title_enlarged = font_colored_title
@@ -441,8 +446,13 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     draw.text((x_offset, y_dynamic_offset), genres_caps, font=font_genres, fill=color_hex)
 
     # Strict bounding box for synopsis (light cyan box)
+
+    box_x = 70
+    box_y = 640
+
     box_x = 90
     box_y = 615
+
     box_w = 800
     box_h = 180
 
@@ -493,9 +503,16 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
                 white_img.putalpha(logo_img.convert("L"))
                 logo_img_clean = white_img
 
+
+            logo_img_clean.thumbnail((95, 95), Image.Resampling.LANCZOS)
+            logo_img_clean = logo_img_clean.convert('RGBA')
+            final_img.paste(logo_img_clean, (brand_x, brand_y), logo_img_clean)
+            brand_x += 115
+
             logo_img_clean = logo_img_clean.resize((80, 80), Image.Resampling.LANCZOS).convert('RGBA')
             final_img.paste(logo_img_clean, (brand_x, brand_y), logo_img_clean)
             brand_x += 100
+
         except Exception:
             pass
 
