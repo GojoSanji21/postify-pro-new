@@ -512,3 +512,233 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     final_img.save(buf, format='PNG')
     buf.seek(0)
     return buf
+
+async def generate_poster_3(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, offset_x=0, offset_y=0, zoom_scale=1.0, imdb_data=None):
+    if imdb_data is None:
+        imdb_data = {}
+
+    template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"Poster 3 Template missing at {template_path}")
+
+    base = Image.open(template_path).convert("RGBA")
+    draw = ImageDraw.Draw(base)
+
+    # 1. Main Fanart (Left Box)
+    # Box Coordinates approximate based on 1920x1080 template:
+    # Left box bounds: [190, 160] to [1000, 700] -> approx 810x540
+    try:
+        if custom_image_path:
+            char_img = Image.open(custom_image_path).convert("RGBA")
+        elif anime_img_url:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(anime_img_url) as resp:
+                    if resp.status == 200:
+                        img_data = await resp.read()
+                        char_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
+                    else:
+                        char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
+        else:
+            char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
+
+        char_w, char_h = char_img.size
+        # The target rectangle is roughly (195, 150) to (1010, 695) -> 815x545
+        box_rect = (195, 150, 1010, 695)
+        box_w = box_rect[2] - box_rect[0]
+        box_h = box_rect[3] - box_rect[1]
+
+        scale = max(box_w / char_w, box_h / char_h) * zoom_scale
+        new_w, new_h = int(char_w * scale), int(char_h * scale)
+        char_img = char_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        paste_x = box_rect[0] + (box_w - new_w) // 2 + offset_x
+        paste_y = box_rect[1] + (box_h - new_h) // 2 + offset_y
+
+        temp_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        temp_layer.paste(char_img, (paste_x, paste_y))
+
+        # Create mask for rounded rectangle
+        mask = Image.new("L", base.size, 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.rounded_rectangle(box_rect, radius=30, fill=255)
+
+        base.paste(temp_layer, (0, 0), mask)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+    # 2. Typography Setup
+    try:
+        font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 65)
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 28)
+        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 55)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 25)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 30)
+        font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 35)
+        font_ep_sub = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 30)
+    except Exception as e:
+        # Fallback to the available font in repo if standard ones are missing
+        try:
+            fallback = os.path.join(FONTS_DIR, "Montserrat-Black.ttf")
+            font_title = font_rating = font_brand = font_ep_title = ImageFont.truetype(fallback, 65)
+            font_genres = font_synopsis = font_ep_sub = ImageFont.truetype(fallback, 28)
+        except:
+            font_title = font_genres = font_rating = font_synopsis = font_brand = font_ep_title = font_ep_sub = ImageFont.load_default()
+
+    # 3. Title (Wrap 2 lines)
+    disp_title = apply_small_caps(title) if small_caps else title
+    if disp_title:
+        title_lines = textwrap.wrap(disp_title, width=22)
+        if len(title_lines) > 2:
+            title_lines = title_lines[:2]
+            title_lines[1] = title_lines[1] + "..."
+
+        title_y = 200
+        for line in title_lines:
+            draw.text((1125, title_y), line, font=font_title, fill=(255, 255, 255, 255))
+            title_y += 75
+
+    # 4. Genres
+    # Pill boxes at approx (1125, 380), (1335, 380), (1545, 380) with w~180
+    genre_list = [g.strip() for g in genres.split(',')] if genres else []
+    genre_coords = [(1125, 335), (1380, 335), (1640, 335)]
+    genre_w = 230
+    genre_h = 60
+    for i, g in enumerate(genre_list[:3]):
+        gx, gy = genre_coords[i]
+        text_bbox = draw.textbbox((0, 0), apply_small_caps(g) if small_caps else g, font=font_genres)
+        tw = text_bbox[2] - text_bbox[0]
+        th = text_bbox[3] - text_bbox[1]
+
+        tx = gx + (genre_w - tw) // 2
+        ty = gy + (genre_h - th) // 2 - 5
+        draw.text((tx, ty), apply_small_caps(g) if small_caps else g, font=font_genres, fill=(255, 255, 255, 255))
+
+    # 5. Rating and Duration
+    rating = str(imdb_data.get("rating", "N/A"))
+    duration = str(imdb_data.get("duration", "N/A"))
+    # Coordinates for text inside rating box: approx Rating (1140, 500), Duration (1340, 500)
+    draw.text((1140, 480), rating, font=font_rating, fill=(255, 255, 255, 255))
+    draw.text((1340, 480), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
+
+    # 6. Synopsis
+    if synopsis:
+        clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
+        synopsis_lines = textwrap.wrap(clean_synopsis, width=58)
+
+        max_lines = 4
+        if len(synopsis_lines) > max_lines:
+            synopsis_lines = synopsis_lines[:max_lines]
+            synopsis_lines[-1] = synopsis_lines[-1][: -12] + "...read more"
+
+        syn_y = 590
+        for line in synopsis_lines:
+            draw.text((1140, syn_y), line, font=font_synopsis, fill=(180, 180, 180, 255))
+            syn_y += 35
+
+    # 7. Episodes Section
+    eps = imdb_data.get("episodes", [])
+    ep_coords = [
+        {"box": (198, 830, 345, 965), "title_pos": (390, 830), "sub_pos": (390, 915), "ep_num": "E01"},
+        {"box": (1028, 830, 1175, 965), "title_pos": (1220, 830), "sub_pos": (1220, 915), "ep_num": "E02"}
+    ]
+
+    for i, ep_info in enumerate(ep_coords):
+        if i < len(eps):
+            ep = eps[i]
+
+            # Draw EP Title
+            ep_title_text = f"{ep_info['ep_num']} • {ep['title']}"
+            if len(ep_title_text) > 22:
+                ep_title_text = ep_title_text[:20] + "..."
+            draw.text(ep_info["title_pos"], ep_title_text, font=font_ep_title, fill=(255, 255, 255, 255))
+
+            # Draw Sub (Rating / Duration)
+            ep_sub_text = f"⭐ {ep['rating']}   🕒 {ep['duration']}"
+            draw.text(ep_info["sub_pos"], ep_sub_text, font=font_ep_sub, fill=(180, 180, 180, 255))
+
+            # Paste Thumbnail
+            thumb_img = None
+            if ep.get("image"):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(ep["image"]) as resp:
+                            if resp.status == 200:
+                                img_data = await resp.read()
+                                thumb_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
+                except:
+                    pass
+
+            if not thumb_img:
+                thumb_img = Image.new("RGBA", (200, 200), (80, 80, 80, 255))
+
+            try:
+                box_rect = ep_info["box"]
+                box_w = box_rect[2] - box_rect[0]
+                box_h = box_rect[3] - box_rect[1]
+
+                # Crop to fit square perfectly
+                img_w, img_h = thumb_img.size
+                scale = max(box_w / img_w, box_h / img_h)
+                new_w, new_h = int(img_w * scale), int(img_h * scale)
+                thumb_img = thumb_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                # Center crop
+                left = (new_w - box_w) // 2
+                top = (new_h - box_h) // 2
+                thumb_img = thumb_img.crop((left, top, left + box_w, top + box_h))
+
+                # Mask rounded rect
+                temp_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+                temp_layer.paste(thumb_img, (box_rect[0], box_rect[1]))
+
+                mask = Image.new("L", base.size, 0)
+                draw_mask = ImageDraw.Draw(mask)
+                draw_mask.rounded_rectangle(box_rect, radius=20, fill=255)
+
+                base.paste(temp_layer, (0, 0), mask)
+            except:
+                pass
+
+    # 8. Branding & Logo
+    disp_username = apply_small_caps(username) if small_caps else username
+    if disp_username:
+        # Search bar is approx at (260, 45) to (500, 85)
+        text_bbox = draw.textbbox((0, 0), disp_username, font=font_brand)
+        tw = text_bbox[2] - text_bbox[0]
+        th = text_bbox[3] - text_bbox[1]
+
+        # Center horizontally around 370, vertically around 65
+        draw.text((280, 45), disp_username, font=font_brand, fill=(180, 180, 180, 255))
+
+    if logo_url:
+        try:
+            if logo_url.startswith("http"):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(logo_url) as resp:
+                        if resp.status == 200:
+                            l_data = await resp.read()
+                            logo_img = Image.open(io.BytesIO(l_data)).convert("RGBA")
+            else:
+                logo_img = Image.open(logo_url).convert("RGBA")
+
+            logo_img.thumbnail((70, 70), Image.Resampling.LANCZOS)
+            lw, lh = logo_img.size
+            # Top right circle approx center is (1820, 65)
+            lx = 1795 + (70 - lw) // 2
+            ly = 40 + (70 - lh) // 2
+
+            # Mask to circle
+            mask = Image.new("L", (lw, lh), 0)
+            d_mask = ImageDraw.Draw(mask)
+            d_mask.ellipse((0, 0, lw, lh), fill=255)
+
+            base.paste(logo_img, (lx, ly), mask)
+        except Exception as e:
+            pass
+
+    out_bio = io.BytesIO()
+    base.convert("RGB").save(out_bio, format="JPEG", quality=90)
+    out_bio.name = "poster3.jpg"
+    out_bio.seek(0)
+    return out_bio
