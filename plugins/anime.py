@@ -35,7 +35,7 @@ async def fetch_extra_images(title_eng, title_rom, mal_id=None):
     if mal_id:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"https://api.jikan.moe/v4/anime/{mal_id}/pictures") as resp:
+                async with session.get(f"https://api.jikan.moe/v4/anime/{mal_id}/pictures", timeout=10) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         if 'data' in data:
@@ -61,7 +61,7 @@ async def fetch_extra_images(title_eng, title_rom, mal_id=None):
                 for t in search_titles:
                     encoded_title = urllib.parse.quote(t)
                     url = f"https://webservice.fanart.tv/v3/search/tv?api_key={FANART_API_KEY}&query={encoded_title}"
-                    async with session.get(url) as resp:
+                    async with session.get(url, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             if data and isinstance(data, list) and len(data) > 0:
@@ -69,7 +69,7 @@ async def fetch_extra_images(title_eng, title_rom, mal_id=None):
                                 if tv_id: break 
                 if tv_id:
                     img_url = f"https://webservice.fanart.tv/v3/tv/{tv_id}?api_key={FANART_API_KEY}"
-                    async with session.get(img_url) as img_resp:
+                    async with session.get(img_url, timeout=10) as img_resp:
                         if img_resp.status == 200:
                             img_data = await img_resp.json()
                             for key in ['tvposter', 'showbackground', 'characterart', 'hdclearart']:
@@ -282,9 +282,10 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
         user_data[user_id]['template_v'] = template_v
         if template_v == 3:
             await callback_query.message.edit_text("⏳ Fetching IMDb & Episode Data...")
-            from plugins.imdb_scraper import scrape_imdb_data
-            user_data[user_id]['imdb_data'] = scrape_imdb_data(title_eng or title_rom)
-    except:
+            from plugins.imdb_scraper import async_scrape_imdb_data
+            user_data[user_id]['imdb_data'] = await async_scrape_imdb_data(title_eng or title_rom)
+    except Exception as e:
+        print(f"Error fetching template or IMDB data: {e}")
         pass
 
     await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")

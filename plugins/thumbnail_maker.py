@@ -536,16 +536,24 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     if imdb_data is None:
         imdb_data = {}
 
-    template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
+    template_path = os.path.join(ASSETS_DIR, "poster3_template_1080.png")
     if not os.path.exists(template_path):
-        raise FileNotFoundError(f"Poster 3 Template missing at {template_path}")
+        template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Poster 3 Template missing at {template_path}")
+        base = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
+    else:
+        base = Image.open(template_path).convert("RGBA")
 
-    base = Image.open(template_path).convert("RGBA")
     draw = ImageDraw.Draw(base)
 
+    # Coordinates derived from 640x360 scaled to 1920x1080 (3x scale)
+    # Main Fanart Box: X:67, Y:52, W:268, H:180 -> Scaled: X:201, Y:156, W:804, H:540
+    # Ep 1 Box: X:67, Y:278, W:49, H:47 -> Scaled: X:201, Y:834, W:147, H:141
+    # Ep 2 Box: X:344, Y:278, W:50, H:47 -> Scaled: X:1032, Y:834, W:150, H:141
+    # Logo Circle: X:614, Y:19, R:16 -> Scaled: CX:1842, CY:57, R:48
+
     # 1. Main Fanart (Left Box)
-    # Box Coordinates approximate based on 1920x1080 template:
-    # Left box bounds: [190, 160] to [1000, 700] -> approx 810x540
     try:
         if custom_image_path:
             char_img = Image.open(custom_image_path).convert("RGBA")
@@ -561,8 +569,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
 
         char_w, char_h = char_img.size
-        # The target rectangle is roughly (195, 150) to (1010, 695) -> 815x545
-        box_rect = (195, 150, 1010, 695)
+        box_rect = (201, 156, 1005, 696)
         box_w = box_rect[2] - box_rect[0]
         box_h = box_rect[3] - box_rect[1]
 
@@ -656,10 +663,23 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             syn_y += 35
 
     # 7. Episodes Section
-    eps = imdb_data.get("episodes", [])
+    eps = [
+        {
+            "title": imdb_data.get('ep1_title', 'Episode 1'),
+            "rating": imdb_data.get('ep1_rating', 'N/A'),
+            "duration": imdb_data.get('ep1_duration', '24m'),
+            "image": imdb_data.get('ep1_thumb')
+        },
+        {
+            "title": imdb_data.get('ep2_title', 'Episode 2'),
+            "rating": imdb_data.get('ep2_rating', 'N/A'),
+            "duration": imdb_data.get('ep2_duration', '24m'),
+            "image": imdb_data.get('ep2_thumb')
+        }
+    ]
     ep_coords = [
-        {"box": (198, 830, 345, 965), "title_pos": (390, 830), "sub_pos": (390, 915), "ep_num": "E01"},
-        {"box": (1028, 830, 1175, 965), "title_pos": (1220, 830), "sub_pos": (1220, 915), "ep_num": "E02"}
+        {"box": (201, 834, 348, 975), "title_pos": (380, 850), "sub_pos": (380, 900), "ep_num": "E01"},
+        {"box": (1032, 834, 1182, 975), "title_pos": (1220, 850), "sub_pos": (1220, 900), "ep_num": "E02"}
     ]
 
     for i, ep_info in enumerate(ep_coords):
@@ -673,8 +693,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             draw.text(ep_info["title_pos"], ep_title_text, font=font_ep_title, fill=(255, 255, 255, 255))
 
             # Draw Sub (Rating / Duration)
-            ep_sub_text = f"⭐ {ep['rating']}   🕒 {ep['duration']}"
-            draw.text(ep_info["sub_pos"], ep_sub_text, font=font_ep_sub, fill=(180, 180, 180, 255))
+            ep_sub_text = f"Rating: {ep['rating']}   {ep['duration']}"
+            draw.text(ep_info["sub_pos"], ep_sub_text, font=font_ep_sub, fill=(150, 150, 150, 255))
 
             # Paste Thumbnail
             thumb_img = None
@@ -741,11 +761,11 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            logo_img.thumbnail((70, 70), Image.Resampling.LANCZOS)
+            logo_img.thumbnail((96, 96), Image.Resampling.LANCZOS)
             lw, lh = logo_img.size
-            # Top right circle approx center is (1820, 65)
-            lx = 1795 + (70 - lw) // 2
-            ly = 40 + (70 - lh) // 2
+            # Logo Circle: CX:1842, CY:57, R:48 -> box: (1794, 9, 1890, 105)
+            lx = 1794 + (96 - lw) // 2
+            ly = 9 + (96 - lh) // 2
 
             # Mask to circle
             mask = Image.new("L", (lw, lh), 0)
@@ -757,7 +777,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             pass
 
     out_bio = io.BytesIO()
-    base.convert("RGB").save(out_bio, format="JPEG", quality=90)
+    base.convert("RGB").save(out_bio, format="JPEG", quality=95)
     out_bio.name = "poster3.jpg"
     out_bio.seek(0)
     return out_bio
