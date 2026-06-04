@@ -158,6 +158,23 @@ async def anime_cmd(client: Bot, message: Message):
         'timestamp': time.time()
     }
 
+    try:
+        from databases.database import db
+        template_v = await db.get_anime_template(user_id)
+        user_data[user_id]['template_v'] = template_v
+        if template_v == 3:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(apply_small_caps("AniList"), callback_data="search_anilist"),
+                 InlineKeyboardButton(apply_small_caps("MyAnimeList"), callback_data="search_mal")],
+                [InlineKeyboardButton(apply_small_caps("IMDb (Poster 3 Recommended)"), callback_data="search_mal")], # Using MAL for base search still works as long as IMDB data is appended later, but we add an explicit button to assure the user. Let's just use MAL for the base search to grab the title for IMDB.
+                [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
+            ])
+            await message.reply_text(f"SELECT SOURCE FOR: {query}\n\n*Note: Template 3 requires extra IMDb fetching.*", reply_markup=keyboard)
+            return
+    except:
+        user_data[user_id]['template_v'] = 1
+        pass
+
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(apply_small_caps("Anilist"), callback_data="search_anilist"),
          InlineKeyboardButton(apply_small_caps("MyAnimeList"), callback_data="search_mal")],
@@ -259,6 +276,18 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
     title_eng = selected_anime['title'].get('english', '')
     title_rom = selected_anime['title'].get('romaji', '')
     
+    try:
+        from databases.database import db
+        template_v = await db.get_anime_template(user_id)
+        user_data[user_id]['template_v'] = template_v
+        if template_v == 3:
+            await callback_query.message.edit_text("⏳ Fetching IMDb & Episode Data...")
+            from plugins.imdb_scraper import scrape_imdb_data
+            user_data[user_id]['imdb_data'] = scrape_imdb_data(title_eng or title_rom)
+    except:
+        pass
+
+    await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
     images = []
     if selected_anime.get('bannerImage'): images.append(selected_anime['bannerImage'])
     if selected_anime.get('coverImage', {}).get('extraLarge'): images.append(selected_anime['coverImage']['extraLarge'])
@@ -399,7 +428,42 @@ async def build_final_poster(client, callback_query, user_id):
     offset_y = user_data[user_id].get('offset_y', 0)
     zoom_scale = user_data[user_id].get('zoom_scale', 1.0)
 
-    if template_v == 2:
+    if template_v == 3:
+        try:
+            from plugins.thumbnail_maker import generate_poster_3
+            imdb_data = user_data[user_id].get('imdb_data', {})
+            poster_buf = await generate_poster_3(
+                anime_img_url=image_url if not custom_image_path else None,
+                custom_image_path=custom_image_path,
+                title=title,
+                genres=genres,
+                synopsis=synopsis,
+                username=final_username,
+                logo_url=custom_logo,
+                small_caps=False,
+                offset_x=offset_x,
+                offset_y=offset_y,
+                zoom_scale=zoom_scale,
+                imdb_data=imdb_data
+            )
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            from plugins.thumbnail_maker import generate_poster
+            poster_buf = await generate_poster(
+                anime_img_url=image_url if not custom_image_path else None,
+                custom_image_path=custom_image_path,
+                title=title,
+                genres=genres,
+                synopsis=synopsis,
+                username=final_username,
+                logo_url=custom_logo,
+                crop_state=crop_state,
+                small_caps=False,
+                template_url=color_info['url'],
+                color_hex=color_info['hex']
+            )
+    elif template_v == 2:
         try:
             from plugins.thumbnail_maker import generate_poster_2
             poster_buf = await generate_poster_2(
@@ -483,7 +547,14 @@ def get_final_keyboard(color_state, template_v=1):
     from pyrogram.enums import ButtonStyle
     color_name = COLORS[color_state]['name']
 
-    if template_v == 2:
+    if template_v == 3:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
+             InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
+        ])
+    elif template_v == 2:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("⬆️", callback_data="anime_final_up", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton("⬅️", callback_data="anime_final_left", style=ButtonStyle.PRIMARY),
