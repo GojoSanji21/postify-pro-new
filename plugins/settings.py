@@ -273,6 +273,31 @@ async def anime_template_2_cb(client: Client, query: CallbackQuery):
         pass
 
 
+@Bot.on_callback_query(filters.regex('^set_anime_template_3$'), group=-1)
+async def anime_template_3_cb(client: Client, query: CallbackQuery):
+    await query.answer("Previewing Poster 3...", show_alert=False)
+    header = get_header("Template Settings")
+
+    try:
+        from databases.database import db
+        await db.set_anime_template(query.from_user.id, 3)
+    except: pass
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(apply_small_caps("Template 1 (Main)"), callback_data="set_anime_template_1", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Poster 2"), callback_data="set_anime_template_2", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("✅ Poster 3"), callback_data="set_anime_template_3", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Poster 4"), callback_data="set_anime_template_4", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Poster 5"), callback_data="set_anime_template_5", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Poster 6"), callback_data="set_anime_template_6", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Poster 7"), callback_data="set_anime_template_7", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Poster 8"), callback_data="set_anime_template_8", style=ButtonStyle.PRIMARY), InlineKeyboardButton(apply_small_caps("Poster 9"), callback_data="set_anime_template_9", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton(apply_small_caps("Back"), callback_data="set_anime", style=ButtonStyle.PRIMARY)]
+    ])
+    text = apply_small_caps("◉ Select Template For Anime") + "\n\n- " + apply_small_caps("Current: Poster 3")
+    try:
+        await query.edit_message_media(media=InputMediaPhoto("https://i.ibb.co/ds42K2bS/IMG-20260603-093910-609.jpg", caption=header + text), reply_markup=keyboard)
+    except:
+        pass
+
+
 @Bot.on_callback_query(filters.regex('^set_anime_branding$'), group=-1)
 async def anime_branding_cb(client: Client, query: CallbackQuery):
     await query.edit_message_caption(caption=WAIT_MSG)

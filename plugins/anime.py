@@ -435,6 +435,7 @@ async def build_final_poster(client, callback_query, user_id):
             )
     else:
         from plugins.thumbnail_maker import generate_poster
+        custom_bg_path = user_data[user_id].get('custom_bg_path', None)
         poster_buf = await generate_poster(
             anime_img_url=image_url if not custom_image_path else None,
             custom_image_path=custom_image_path,
@@ -446,7 +447,8 @@ async def build_final_poster(client, callback_query, user_id):
             crop_state=crop_state,
             small_caps=False,
             template_url=color_info['url'],
-            color_hex=color_info['hex']
+            color_hex=color_info['hex'],
+            custom_bg_path=custom_bg_path
         )
 
     try:
@@ -499,9 +501,42 @@ def get_final_keyboard(color_state, template_v=1):
             [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move", style=ButtonStyle.PRIMARY),
              InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("𝗔𝗗𝗗 𝗕𝗔𝗖𝗞𝗚𝗥𝗢𝗨𝗡𝗗", callback_data="anime_final_bg", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
              InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
         ])
+
+@Bot.on_callback_query(filters.regex(r"^anime_final_bg$"), group=-1)
+async def handle_anime_final_bg(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data:
+        return await callback_query.answer("Session expired.", show_alert=True)
+
+    await callback_query.answer("Send custom background.")
+    try:
+        response = await client.ask(user_id, "Please send a custom background image (photo or document) within 60 seconds.", filters=filters.photo | filters.document, timeout=60)
+        file = response.photo or response.document
+        if file:
+            wait_msg = await client.send_message(user_id, "Downloading custom background...")
+            bg_path = await client.download_media(response)
+            user_data[user_id]['custom_bg_path'] = bg_path
+            await wait_msg.delete()
+
+            poster_buf, caption = await build_final_poster(client, callback_query, user_id)
+            await client.edit_message_media(
+                chat_id=user_id,
+                message_id=user_data[user_id]['photo_msg_id'],
+                media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
+            )
+            if 'controls_msg_id' in user_data[user_id]:
+                await client.edit_message_reply_markup(
+                    chat_id=user_id,
+                    message_id=user_data[user_id]['controls_msg_id'],
+                    reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+                )
+    except asyncio.TimeoutError:
+        await client.send_message(user_id, "Timeout occurred while waiting for background image.")
+    raise StopPropagation
 
 @Bot.on_callback_query(filters.regex(r"^anime_audio_(.*)"), group=-1)
 async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):

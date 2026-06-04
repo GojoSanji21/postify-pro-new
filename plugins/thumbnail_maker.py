@@ -72,7 +72,7 @@ def colorize_template_2(template_img, new_hex):
 
     return Image.fromarray(arr)
 
-async def generate_poster(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", template_version=1):
+async def generate_poster(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", template_version=1, custom_bg_path=None):
 
     if custom_image_path:
         anime_img = Image.open(custom_image_path).convert('RGBA')
@@ -117,7 +117,17 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     if template_version == 2 and not custom_image_path:
         anime_artwork = ImageOps.fit(anime_img, base_template.size, method=Image.Resampling.LANCZOS)
         anime_artwork = enhance_image(anime_artwork)
-        final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+
+        if custom_bg_path:
+            try:
+                bg_img = Image.open(custom_bg_path).convert('RGBA')
+                bg_img = ImageOps.fit(bg_img, base_template.size, method=Image.Resampling.LANCZOS)
+                final_img = bg_img
+            except:
+                final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+        else:
+            final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+
         final_img.paste(anime_artwork, (0, 0))
         final_img.paste(base_template, (0, 0), base_template)
     else:
@@ -162,8 +172,17 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
 
         anime_artwork = enhance_image(anime_artwork)
 
-        final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
-        final_img.paste(anime_artwork, (0, 0))
+        if custom_bg_path:
+            try:
+                bg_img = Image.open(custom_bg_path).convert('RGBA')
+                bg_img = ImageOps.fit(bg_img, base_template.size, method=Image.Resampling.LANCZOS)
+                final_img = bg_img
+            except:
+                final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+        else:
+            final_img = Image.new('RGBA', base_template.size, (0, 0, 0, 255))
+
+        final_img.paste(anime_artwork, (0, 0), anime_artwork)
         final_img.paste(base_template, (0, 0), base_template)
 
     draw = ImageDraw.Draw(final_img)
