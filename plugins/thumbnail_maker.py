@@ -5,6 +5,7 @@ import re
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops, ImageEnhance
 import textwrap
 import io
+import numpy as np
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
@@ -541,17 +542,20 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Poster 3 Template missing at {template_path}")
-        base = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
+        base_template = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
     else:
-        base = Image.open(template_path).convert("RGBA")
+        base_template = Image.open(template_path).convert("RGBA")
 
-    draw = ImageDraw.Draw(base)
+    # Create a punch-out mask to make the white boxes transparent in the template layer
+    template_arr = np.array(base_template)
+    # Identify bright white pixels (the boxes)
+    white_mask = (template_arr[:,:,0] > 240) & (template_arr[:,:,1] > 240) & (template_arr[:,:,2] > 240)
+    # Set alpha to 0 for those pixels
+    template_arr[white_mask, 3] = 0
+    framed_template = Image.fromarray(template_arr)
 
-    # Coordinates derived from 640x360 scaled to 1920x1080 (3x scale)
-    # Main Fanart Box: X:67, Y:52, W:268, H:180 -> Scaled: X:201, Y:156, W:804, H:540
-    # Ep 1 Box: X:67, Y:278, W:49, H:47 -> Scaled: X:201, Y:834, W:147, H:141
-    # Ep 2 Box: X:344, Y:278, W:50, H:47 -> Scaled: X:1032, Y:834, W:150, H:141
-    # Logo Circle: X:614, Y:19, R:16 -> Scaled: CX:1842, CY:57, R:48
+    # Create the base canvas that will go underneath the frame
+    base_canvas = Image.new("RGBA", (1920, 1080), (30, 30, 30, 255))
 
     # 1. Main Fanart (Left Box)
     try:
@@ -580,18 +584,17 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         paste_x = box_rect[0] + (box_w - new_w) // 2 + offset_x
         paste_y = box_rect[1] + (box_h - new_h) // 2 + offset_y
 
-        temp_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
-        temp_layer.paste(char_img, (paste_x, paste_y))
-
-        # Create mask for rounded rectangle
-        mask = Image.new("L", base.size, 0)
-        draw_mask = ImageDraw.Draw(mask)
-        draw_mask.rounded_rectangle(box_rect, radius=30, fill=255)
-
-        base.paste(temp_layer, (0, 0), mask)
+        # Paste on the bottom canvas layer
+        base_canvas.paste(char_img, (paste_x, paste_y))
     except Exception as e:
         import traceback
         traceback.print_exc()
+
+    # Wait to alpha_composite until after EP thumbnails are also pasted on base_canvas.
+
+    # Since text needs to be drawn on the final composited image,
+    # we need to create a temporary draw object for measuring text before drawing.
+    temp_draw = ImageDraw.Draw(base_template)
 
     # 2. Typography Setup
     try:
@@ -619,39 +622,31 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             title_lines = title_lines[:2]
             title_lines[1] = title_lines[1] + "..."
 
-        title_y = 200
-        for line in title_lines:
-            draw.text((1125, title_y), line, font=font_title, fill=(255, 255, 255, 255))
-            title_y += 75
-
     # 4. Genres
-    # Pill boxes dynamic calculation based on found bounds:
-    # Pill 1: (1079, 332, 169, 72), Pill 2: (1337, 334, 242, 70), Pill 3: (1598, 332, 216, 71)
     genre_list = [g.strip() for g in genres.split(',')] if genres else []
     pills = [
         (1079, 332, 169, 72),
         (1337, 334, 242, 70),
         (1598, 332, 216, 71)
     ]
+    genre_draw_commands = []
     for i, g in enumerate(genre_list[:3]):
         px, py, pw, ph = pills[i]
         display_g = apply_small_caps(g) if small_caps else g
-        text_bbox = draw.textbbox((0, 0), display_g, font=font_genres)
+        text_bbox = temp_draw.textbbox((0, 0), display_g, font=font_genres)
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
         tx = px + (pw - tw) // 2
         ty = py + (ph - th) // 2 - 5
-        draw.text((tx, ty), display_g, font=font_genres, fill=(255, 255, 255, 255))
+        genre_draw_commands.append(((tx, ty), display_g, font_genres))
 
     # 5. Rating and Duration
     rating = str(imdb_data.get("rating", "N/A"))
     duration = str(imdb_data.get("duration", "N/A"))
-    # Coordinates for text inside rating box: approx Rating (1140, 500), Duration (1340, 500)
-    draw.text((1140, 480), rating, font=font_rating, fill=(255, 255, 255, 255))
-    draw.text((1340, 480), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
 
     # 6. Synopsis
+    synopsis_draw_commands = []
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
         box_x = 1080
@@ -665,7 +660,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
         for word in words:
             current_line.append(word)
-            w = draw.textlength(' '.join(current_line), font=font_synopsis)
+            w = temp_draw.textlength(' '.join(current_line), font=font_synopsis)
             if w > box_w:
                 current_line.pop()
                 lines.append(' '.join(current_line))
@@ -675,21 +670,40 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
         line_spacing = 5
         line_h = 35
-        max_lines = box_h // (line_h + line_spacing)
+        # Strictly truncate to MAXIMUM of 2 lines
+        max_lines = 2
 
         if len(lines) > max_lines:
             lines = lines[:max_lines]
             last_line = lines[-1]
-            while draw.textlength(last_line + "...read more", font=font_synopsis) > box_w and len(last_line) > 0:
+            while temp_draw.textlength(last_line + "...read more", font=font_synopsis) > box_w and len(last_line) > 0:
                 last_line = last_line[:-1]
             lines[-1] = last_line.strip() + "...read more"
 
         syn_y = box_y
         for line in lines:
-            draw.text((box_x, syn_y), line, font=font_synopsis, fill=(180, 180, 180, 255))
+            synopsis_draw_commands.append(((box_x, syn_y), line, font_synopsis))
             syn_y += (line_h + line_spacing)
 
+    # Season Button Logic
+    season_text = "Season 1"
+    season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
+    if season_match:
+        season_text = f"Season {season_match.group(1)}"
+    # Approximate Season Button Coordinates right of the About box
+    season_x = 1800
+    season_y = 600
+    text_bbox = temp_draw.textbbox((0, 0), season_text, font=font_synopsis)
+    sw = text_bbox[2] - text_bbox[0]
+
     # 7. Episodes Section
+    try:
+        font_ep_title_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 25)
+        font_ep_sub_tiny = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 20)
+    except:
+        font_ep_title_small = font_ep_title
+        font_ep_sub_tiny = font_ep_sub
+
     eps = [
         {
             "title": imdb_data.get('ep1_title', 'Episode 1'),
@@ -705,23 +719,33 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         }
     ]
     ep_coords = [
-        {"box": (201, 834, 348, 975), "title_pos": (380, 850), "sub_pos": (380, 900)},
-        {"box": (1032, 834, 1182, 975), "title_pos": (1220, 850), "sub_pos": (1220, 900)}
+        {
+            "box": (201, 834, 348, 975),
+            "title_pos": (455, 853),
+            "rating_pos": (375, 921),
+            "duration_pos": (455, 921)
+        },
+        {
+            "box": (1032, 834, 1182, 975),
+            "title_pos": (1290, 853),
+            "rating_pos": (1205, 921),
+            "duration_pos": (1285, 921)
+        }
     ]
 
+    ep_draw_commands = []
     for i, ep_info in enumerate(ep_coords):
         if i < len(eps):
             ep = eps[i]
 
-            # Draw EP Title (without prepending E01/E02, it's already in the template)
+            # Collect text drawing commands to draw after base composition
             ep_title_text = f"{ep['title']}"
-            if len(ep_title_text) > 22:
-                ep_title_text = ep_title_text[:20] + "..."
-            draw.text(ep_info["title_pos"], ep_title_text, font=font_ep_title, fill=(255, 255, 255, 255))
+            if len(ep_title_text) > 30:
+                ep_title_text = ep_title_text[:28] + "..."
+            ep_draw_commands.append((ep_info["title_pos"], ep_title_text, font_ep_title_small))
 
-            # Draw Sub (Rating / Duration)
-            ep_sub_text = f"Rating: {ep['rating']}   {ep['duration']}"
-            draw.text(ep_info["sub_pos"], ep_sub_text, font=font_ep_sub, fill=(150, 150, 150, 255))
+            ep_draw_commands.append((ep_info["rating_pos"], f"{ep['rating']}", font_ep_sub_tiny))
+            ep_draw_commands.append((ep_info["duration_pos"], f"{ep['duration'].replace(' min', '')}", font_ep_sub_tiny))
 
             # Paste Thumbnail
             thumb_img = None
@@ -754,21 +778,61 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 top = (new_h - box_h) // 2
                 thumb_img = thumb_img.crop((left, top, left + box_w, top + box_h))
 
-                # Exact square paste (sharp corners over the box)
-                base.paste(thumb_img, (box_rect[0], box_rect[1]))
+                # Paste thumbnail onto the bottom canvas layer
+                base_canvas.paste(thumb_img, (box_rect[0], box_rect[1]))
             except:
                 pass
+
+    # Now composite the transparent frame over the base canvas which contains Fanart and Thumbnails
+    base = Image.alpha_composite(base_canvas, framed_template)
+    draw = ImageDraw.Draw(base)
+
+    # Execute text rendering on the final composited image
+    # 3. Title
+    if disp_title:
+        title_y = 170
+        for line in title_lines:
+            draw.text((1125, title_y), line, font=font_title, fill=(255, 255, 255, 255))
+            title_y += 75
+
+    # 4. Genres
+    for pos, text, font in genre_draw_commands:
+        draw.text(pos, text, font=font, fill=(255, 255, 255, 255))
+
+    # 5. Rating & Duration
+    draw.text((1060, 505), rating, font=font_rating, fill=(255, 255, 255, 255))
+    draw.text((1360, 505), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
+
+    # 6. Synopsis
+    for pos, text, font in synopsis_draw_commands:
+        draw.text(pos, text, font=font, fill=(180, 180, 180, 255))
+
+    # Season
+    draw.text((season_x - sw, season_y), season_text, font=font_synopsis, fill=(255, 255, 255, 255))
+
+    # 7. Episodes Text
+    for pos, text, font in ep_draw_commands:
+        draw.text(pos, text, font=font, fill=(255, 255, 255, 255))
+
 
     # 8. Branding & Logo
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username:
+        try:
+            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 20)
+        except:
+            font_brand_small = font_brand
+
         # Search bar at (161, 14, 317, 83) => X:161, Y:14, W:317, H:83
-        text_bbox = draw.textbbox((0, 0), disp_username, font=font_brand)
+        text_bbox = draw.textbbox((0, 0), disp_username, font=font_brand_small)
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        # Left aligned inside search bar box
-        draw.text((220, 40), disp_username, font=font_brand, fill=(180, 180, 180, 255))
+        # Centered strictly inside the search bar coordinates (reduced font size)
+        bx, by, bw, bh = 161, 14, 317, 83
+        tx = bx + (bw - tw) // 2
+        ty = by + (bh - th) // 2 - 2
+        draw.text((tx, ty), disp_username, font=font_brand_small, fill=(180, 180, 180, 255))
 
     if logo_url:
         try:
