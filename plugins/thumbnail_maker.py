@@ -550,8 +550,15 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     template_arr = np.array(base_template)
     # Identify bright white pixels (the boxes)
     white_mask = (template_arr[:,:,0] > 240) & (template_arr[:,:,1] > 240) & (template_arr[:,:,2] > 240)
-    # Set alpha to 0 for those pixels
-    template_arr[white_mask, 3] = 0
+
+    # Restrict transparency to specific bounding boxes to prevent white borders and empty grey boxes
+    region_mask = np.zeros(template_arr.shape[:2], dtype=bool)
+    region_mask[156:696, 201:1005] = True   # Main Fanart Box
+    region_mask[834:975, 201:348] = True    # Ep 1 Box
+    region_mask[834:975, 1032:1182] = True  # Ep 2 Box
+
+    # Set alpha to 0 only for those pixels within the regions
+    template_arr[white_mask & region_mask, 3] = 0
     framed_template = Image.fromarray(template_arr)
 
     # Create the base canvas that will go underneath the frame
@@ -600,7 +607,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     try:
         font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 65)
         font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 28)
-        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 55)
+        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 35)
         font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 25)
         font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 30)
         font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 35)
@@ -623,7 +630,14 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             title_lines[1] = title_lines[1] + "..."
 
     # 4. Genres
-    genre_list = [g.strip() for g in genres.split(',')] if genres else []
+    if genres:
+        if ',' in genres:
+            genre_list = [g.strip() for g in genres.split(',')]
+        else:
+            genre_list = [g.strip() for g in genres.split()]
+    else:
+        genre_list = []
+
     pills = [
         (1079, 332, 169, 72),
         (1337, 334, 242, 70),
@@ -650,7 +664,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
         box_x = 1080
-        box_y = 580
+        box_y = 615
         box_w = 780
         box_h = 200
 
@@ -690,16 +704,18 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match:
         season_text = f"Season {season_match.group(1)}"
-    # Approximate Season Button Coordinates right of the About box
-    season_x = 1800
-    season_y = 600
+    # Centered inside the dark pill box at the right
     text_bbox = temp_draw.textbbox((0, 0), season_text, font=font_synopsis)
     sw = text_bbox[2] - text_bbox[0]
+    sh = text_bbox[3] - text_bbox[1]
+    bx, by, bw, bh = 1696, 558, 166, 44
+    season_x = bx + (bw - sw) // 2
+    season_y = by + (bh - sh) // 2 - 2
 
     # 7. Episodes Section
     try:
-        font_ep_title_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 25)
-        font_ep_sub_tiny = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 20)
+        font_ep_title_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 14)
+        font_ep_sub_tiny = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 14)
     except:
         font_ep_title_small = font_ep_title
         font_ep_sub_tiny = font_ep_sub
@@ -721,15 +737,15 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     ep_coords = [
         {
             "box": (201, 834, 348, 975),
-            "title_pos": (455, 853),
-            "rating_pos": (375, 921),
-            "duration_pos": (455, 921)
+            "title_pos": (480, 853),
+            "rating_pos": (400, 921),
+            "duration_pos": (485, 921)
         },
         {
             "box": (1032, 834, 1182, 975),
-            "title_pos": (1290, 853),
-            "rating_pos": (1205, 921),
-            "duration_pos": (1285, 921)
+            "title_pos": (1315, 853),
+            "rating_pos": (1235, 921),
+            "duration_pos": (1320, 921)
         }
     ]
 
@@ -790,7 +806,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     # Execute text rendering on the final composited image
     # 3. Title
     if disp_title:
-        title_y = 170
+        title_y = 145
         for line in title_lines:
             draw.text((1125, title_y), line, font=font_title, fill=(255, 255, 255, 255))
             title_y += 75
@@ -800,15 +816,15 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255))
 
     # 5. Rating & Duration
-    draw.text((1060, 505), rating, font=font_rating, fill=(255, 255, 255, 255))
-    draw.text((1360, 505), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
+    draw.text((1125, 505), rating, font=font_rating, fill=(255, 255, 255, 255))
+    draw.text((1425, 505), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
 
     # 6. Synopsis
     for pos, text, font in synopsis_draw_commands:
         draw.text(pos, text, font=font, fill=(180, 180, 180, 255))
 
     # Season
-    draw.text((season_x - sw, season_y), season_text, font=font_synopsis, fill=(255, 255, 255, 255))
+    draw.text((season_x, season_y), season_text, font=font_synopsis, fill=(255, 255, 255, 255))
 
     # 7. Episodes Text
     for pos, text, font in ep_draw_commands:
@@ -819,7 +835,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username:
         try:
-            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 20)
+            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 18)
         except:
             font_brand_small = font_brand
 
@@ -828,8 +844,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        # Centered strictly inside the search bar coordinates (reduced font size)
-        bx, by, bw, bh = 161, 14, 317, 83
+        # Centered strictly inside the search bar coordinates, shifted right to avoid magnifying glass
+        bx, by, bw, bh = 210, 14, 268, 83 # Adjusted X and W
         tx = bx + (bw - tw) // 2
         ty = by + (bh - th) // 2 - 2
         draw.text((tx, ty), disp_username, font=font_brand_small, fill=(180, 180, 180, 255))
