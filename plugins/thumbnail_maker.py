@@ -625,20 +625,24 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             title_y += 75
 
     # 4. Genres
-    # Pill boxes at approx (1125, 380), (1335, 380), (1545, 380) with w~180
+    # Pill boxes dynamic calculation based on found bounds:
+    # Pill 1: (1079, 332, 169, 72), Pill 2: (1337, 334, 242, 70), Pill 3: (1598, 332, 216, 71)
     genre_list = [g.strip() for g in genres.split(',')] if genres else []
-    genre_coords = [(1125, 335), (1380, 335), (1640, 335)]
-    genre_w = 230
-    genre_h = 60
+    pills = [
+        (1079, 332, 169, 72),
+        (1337, 334, 242, 70),
+        (1598, 332, 216, 71)
+    ]
     for i, g in enumerate(genre_list[:3]):
-        gx, gy = genre_coords[i]
-        text_bbox = draw.textbbox((0, 0), apply_small_caps(g) if small_caps else g, font=font_genres)
+        px, py, pw, ph = pills[i]
+        display_g = apply_small_caps(g) if small_caps else g
+        text_bbox = draw.textbbox((0, 0), display_g, font=font_genres)
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        tx = gx + (genre_w - tw) // 2
-        ty = gy + (genre_h - th) // 2 - 5
-        draw.text((tx, ty), apply_small_caps(g) if small_caps else g, font=font_genres, fill=(255, 255, 255, 255))
+        tx = px + (pw - tw) // 2
+        ty = py + (ph - th) // 2 - 5
+        draw.text((tx, ty), display_g, font=font_genres, fill=(255, 255, 255, 255))
 
     # 5. Rating and Duration
     rating = str(imdb_data.get("rating", "N/A"))
@@ -650,17 +654,40 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     # 6. Synopsis
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
-        synopsis_lines = textwrap.wrap(clean_synopsis, width=58)
+        box_x = 1080
+        box_y = 580
+        box_w = 780
+        box_h = 200
 
-        max_lines = 4
-        if len(synopsis_lines) > max_lines:
-            synopsis_lines = synopsis_lines[:max_lines]
-            synopsis_lines[-1] = synopsis_lines[-1][: -12] + "...read more"
+        words = clean_synopsis.split(' ')
+        lines = []
+        current_line = []
 
-        syn_y = 590
-        for line in synopsis_lines:
-            draw.text((1140, syn_y), line, font=font_synopsis, fill=(180, 180, 180, 255))
-            syn_y += 35
+        for word in words:
+            current_line.append(word)
+            w = draw.textlength(' '.join(current_line), font=font_synopsis)
+            if w > box_w:
+                current_line.pop()
+                lines.append(' '.join(current_line))
+                current_line = [word]
+        if current_line:
+            lines.append(' '.join(current_line))
+
+        line_spacing = 5
+        line_h = 35
+        max_lines = box_h // (line_h + line_spacing)
+
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+            last_line = lines[-1]
+            while draw.textlength(last_line + "...read more", font=font_synopsis) > box_w and len(last_line) > 0:
+                last_line = last_line[:-1]
+            lines[-1] = last_line.strip() + "...read more"
+
+        syn_y = box_y
+        for line in lines:
+            draw.text((box_x, syn_y), line, font=font_synopsis, fill=(180, 180, 180, 255))
+            syn_y += (line_h + line_spacing)
 
     # 7. Episodes Section
     eps = [
@@ -678,16 +705,16 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         }
     ]
     ep_coords = [
-        {"box": (201, 834, 348, 975), "title_pos": (380, 850), "sub_pos": (380, 900), "ep_num": "E01"},
-        {"box": (1032, 834, 1182, 975), "title_pos": (1220, 850), "sub_pos": (1220, 900), "ep_num": "E02"}
+        {"box": (201, 834, 348, 975), "title_pos": (380, 850), "sub_pos": (380, 900)},
+        {"box": (1032, 834, 1182, 975), "title_pos": (1220, 850), "sub_pos": (1220, 900)}
     ]
 
     for i, ep_info in enumerate(ep_coords):
         if i < len(eps):
             ep = eps[i]
 
-            # Draw EP Title
-            ep_title_text = f"{ep_info['ep_num']} • {ep['title']}"
+            # Draw EP Title (without prepending E01/E02, it's already in the template)
+            ep_title_text = f"{ep['title']}"
             if len(ep_title_text) > 22:
                 ep_title_text = ep_title_text[:20] + "..."
             draw.text(ep_info["title_pos"], ep_title_text, font=font_ep_title, fill=(255, 255, 255, 255))
@@ -727,28 +754,21 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 top = (new_h - box_h) // 2
                 thumb_img = thumb_img.crop((left, top, left + box_w, top + box_h))
 
-                # Mask rounded rect
-                temp_layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
-                temp_layer.paste(thumb_img, (box_rect[0], box_rect[1]))
-
-                mask = Image.new("L", base.size, 0)
-                draw_mask = ImageDraw.Draw(mask)
-                draw_mask.rounded_rectangle(box_rect, radius=20, fill=255)
-
-                base.paste(temp_layer, (0, 0), mask)
+                # Exact square paste (sharp corners over the box)
+                base.paste(thumb_img, (box_rect[0], box_rect[1]))
             except:
                 pass
 
     # 8. Branding & Logo
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username:
-        # Search bar is approx at (260, 45) to (500, 85)
+        # Search bar at (161, 14, 317, 83) => X:161, Y:14, W:317, H:83
         text_bbox = draw.textbbox((0, 0), disp_username, font=font_brand)
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        # Center horizontally around 370, vertically around 65
-        draw.text((280, 45), disp_username, font=font_brand, fill=(180, 180, 180, 255))
+        # Left aligned inside search bar box
+        draw.text((220, 40), disp_username, font=font_brand, fill=(180, 180, 180, 255))
 
     if logo_url:
         try:

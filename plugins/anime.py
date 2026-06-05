@@ -7,6 +7,7 @@ from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from pyrogram.enums import ParseMode, ButtonStyle
 from pyrogram import StopPropagation
+from pyrogram.errors import MessageNotModified
 from bot import Bot
 from databases.database import db
 from plugins.thumbnail_maker import generate_poster
@@ -267,7 +268,10 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
         await callback_query.answer("Session expired.", show_alert=True)
         raise StopPropagation
 
-    await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
+    try:
+        await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
+    except MessageNotModified:
+        pass
 
     idx = int(callback_query.matches[0].group(2))
     selected_anime = user_data[user_id]['results'][idx]
@@ -281,14 +285,20 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
         template_v = await db.get_anime_template(user_id)
         user_data[user_id]['template_v'] = template_v
         if template_v == 3:
-            await callback_query.message.edit_text("⏳ Fetching IMDb & Episode Data...")
+            try:
+                await callback_query.message.edit_text("⏳ Fetching IMDb & Episode Data...")
+            except MessageNotModified:
+                pass
             from plugins.imdb_scraper import async_scrape_imdb_data
             user_data[user_id]['imdb_data'] = await async_scrape_imdb_data(title_eng or title_rom)
     except Exception as e:
         print(f"Error fetching template or IMDB data: {e}")
         pass
 
-    await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
+    try:
+        await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
+    except MessageNotModified:
+        pass
     images = []
     if selected_anime.get('bannerImage'): images.append(selected_anime['bannerImage'])
     if selected_anime.get('coverImage', {}).get('extraLarge'): images.append(selected_anime['coverImage']['extraLarge'])
