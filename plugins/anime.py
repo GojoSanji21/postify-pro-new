@@ -442,7 +442,13 @@ async def build_final_poster(client, callback_query, user_id):
     if template_v == 3:
         try:
             from plugins.thumbnail_maker import generate_poster_3
+
+            if 'imdb_data' not in user_data[user_id] or not user_data[user_id]['imdb_data'].get('ep1_title'):
+                from plugins.imdb_scraper import async_scrape_imdb_data
+                title_eng = title
+                user_data[user_id]['imdb_data'] = await async_scrape_imdb_data(title_eng)
             imdb_data = user_data[user_id].get('imdb_data', {})
+
             poster_buf = await generate_poster_3(
                 anime_img_url=image_url if not custom_image_path else None,
                 custom_image_path=custom_image_path,
