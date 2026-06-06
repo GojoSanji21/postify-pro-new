@@ -80,7 +80,7 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     elif anime_img_url:
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(anime_img_url) as resp:
+                async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                     anime_img_data = await resp.read()
                     anime_img = Image.open(io.BytesIO(anime_img_data)).convert('RGBA')
             except Exception:
@@ -332,7 +332,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     elif anime_img_url:
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(anime_img_url) as resp:
+                async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                     anime_img_data = await resp.read()
                     anime_img = Image.open(io.BytesIO(anime_img_data)).convert('RGBA')
             except Exception:
@@ -570,7 +570,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             char_img = Image.open(custom_image_path).convert("RGBA")
         elif anime_img_url:
             async with aiohttp.ClientSession() as session:
-                async with session.get(anime_img_url) as resp:
+                async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                     if resp.status == 200:
                         img_data = await resp.read()
                         char_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
@@ -651,7 +651,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        tx = px + (pw - tw) // 2
+        tx = px + (pw - tw) // 2 + 20
         ty = py + (ph - th) // 2 - 5
         genre_draw_commands.append(((tx, ty), display_g, font_genres))
 
@@ -708,13 +708,13 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     text_bbox = temp_draw.textbbox((0, 0), season_text, font=font_synopsis)
     sw = text_bbox[2] - text_bbox[0]
     sh = text_bbox[3] - text_bbox[1]
-    bx, by, bw, bh = 1696, 558, 166, 44
+    bx, by, bw, bh = 1546, 598, 166, 44
     season_x = bx + (bw - sw) // 2
     season_y = by + (bh - sh) // 2 - 2
 
     # 7. Episodes Section
     try:
-        font_ep_title_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 14)
+        font_ep_title_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 7)
         font_ep_sub_tiny = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 14)
     except:
         font_ep_title_small = font_ep_title
@@ -737,15 +737,15 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     ep_coords = [
         {
             "box": (201, 834, 348, 975),
-            "title_pos": (480, 853),
-            "rating_pos": (400, 921),
-            "duration_pos": (485, 921)
+            "title_pos": (550, 853),
+            "rating_pos": (430, 921),
+            "duration_pos": (515, 921)
         },
         {
             "box": (1032, 834, 1182, 975),
-            "title_pos": (1315, 853),
-            "rating_pos": (1235, 921),
-            "duration_pos": (1320, 921)
+            "title_pos": (1385, 853),
+            "rating_pos": (1265, 921),
+            "duration_pos": (1350, 921)
         }
     ]
 
@@ -768,7 +768,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             if ep.get("image"):
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(ep["image"]) as resp:
+                        async with session.get(ep["image"], headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                             if resp.status == 200:
                                 img_data = await resp.read()
                                 thumb_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
@@ -816,8 +816,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255))
 
     # 5. Rating & Duration
-    draw.text((1125, 505), rating, font=font_rating, fill=(255, 255, 255, 255))
-    draw.text((1425, 505), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
+    draw.text((1185, 520), rating, font=font_rating, fill=(255, 255, 255, 255))
+    draw.text((1485, 520), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255))
 
     # 6. Synopsis
     for pos, text, font in synopsis_draw_commands:
@@ -835,7 +835,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username:
         try:
-            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 18)
+            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 13)
         except:
             font_brand_small = font_brand
 
@@ -845,7 +845,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         th = text_bbox[3] - text_bbox[1]
 
         # Centered strictly inside the search bar coordinates, shifted right to avoid magnifying glass
-        bx, by, bw, bh = 210, 14, 268, 83 # Adjusted X and W
+        bx, by, bw, bh = 250, 14, 268, 83 # Shifted +40 from 210
         tx = bx + (bw - tw) // 2
         ty = by + (bh - th) // 2 - 2
         draw.text((tx, ty), disp_username, font=font_brand_small, fill=(180, 180, 180, 255))
