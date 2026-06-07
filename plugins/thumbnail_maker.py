@@ -651,7 +651,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        tx = px + (pw - tw) // 2 + 20
+        tx = px + (pw - tw) // 2 + 20 + 20
         ty = py + (ph - th) // 2 - 5
         genre_draw_commands.append(((tx, ty), display_g, font_genres))
 
