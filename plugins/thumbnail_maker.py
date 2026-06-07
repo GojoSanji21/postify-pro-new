@@ -537,7 +537,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     framed_template = Image.fromarray(template_arr)
 
     base_canvas = Image.new("RGBA", (1920, 1080), (30, 30, 30, 255))
-
+    
+    char_img = None
     try:
         if custom_image_path:
             char_img = Image.open(custom_image_path).convert("RGBA")
@@ -559,12 +560,12 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
         scale = max(box_w / char_w, box_h / char_h) * zoom_scale
         new_w, new_h = int(char_w * scale), int(char_h * scale)
-        char_img = char_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        scaled_char_img = char_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
         paste_x = box_rect[0] + (box_w - new_w) // 2 + offset_x
         paste_y = box_rect[1] + (box_h - new_h) // 2 + offset_y
 
-        base_canvas.paste(char_img, (paste_x, paste_y))
+        base_canvas.paste(scaled_char_img, (paste_x, paste_y))
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -573,10 +574,12 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
     try:
         font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 65)
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 28)
+        # Reduced font size for genres to fit better
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 22)
         font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 35)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 25)
-        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 30)
+        # Normal/Medium font, size 20 for synopsis
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 20)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 16)
         font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 35)
         font_ep_sub = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 30)
     except Exception as e:
@@ -588,6 +591,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             font_title = font_genres = font_rating = font_synopsis = font_brand = font_ep_title = font_ep_sub = ImageFont.load_default()
 
     disp_title = apply_small_caps(title) if small_caps else title
+    title_lines = [disp_title]
     if disp_title:
         title_lines = textwrap.wrap(disp_title, width=22)
         if len(title_lines) > 2:
@@ -615,7 +619,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
 
-        tx = px + (pw - tw) // 2 + 40 
+        # Shift text Right by 55 pixels so it doesn't overlap the left-aligned emoji
+        tx = px + (pw - tw) // 2 + 55 
         ty = py + (ph - th) // 2 - 5
         genre_draw_commands.append(((tx, ty), display_g, font_genres))
 
@@ -627,8 +632,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
         box_x = 1080
         box_y = 615
-        box_w = 780
-        box_h = 200
+        box_w = 700 # Made max width smaller to prevent overlapping
 
         words = clean_synopsis.split(' ')
         lines = []
@@ -645,8 +649,9 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             lines.append(' '.join(current_line))
 
         line_spacing = 5
-        line_h = 35
-        max_lines = 2
+        line_h = 30
+        # Strict 1 line
+        max_lines = 1
 
         if len(lines) > max_lines:
             lines = lines[:max_lines]
@@ -660,13 +665,14 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             synopsis_draw_commands.append(((box_x, syn_y), line, font_synopsis))
             syn_y += (line_h + line_spacing)
 
-    season_text = ""
+    # Force default "Season 1" if API misses it
+    season_text = "Season 1"
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match:
         season_text = f"Season {season_match.group(1)}"
     
     season_x = 1629
-    season_y = 620
+    season_y = 615 # Slightly shifted for perfect centering
 
     try:
         font_ep_title_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 22)
@@ -675,17 +681,19 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         font_ep_title_small = font_ep_title
         font_ep_sub_tiny = font_ep_sub
 
+    # Provide automatic fallback titles if IMDb API fails
+    fallback_ep_name = title_lines[0][:15] if len(title_lines) > 0 else "Ep"
     eps = [
         {
-            "title": imdb_data.get('ep1_title', ''),
-            "rating": imdb_data.get('ep1_rating', ''),
-            "duration": imdb_data.get('ep1_duration', ''),
+            "title": imdb_data.get('ep1_title') or f"{fallback_ep_name} 1",
+            "rating": imdb_data.get('ep1_rating') or '8.0',
+            "duration": imdb_data.get('ep1_duration') or '24m',
             "image": imdb_data.get('ep1_thumb')
         },
         {
-            "title": imdb_data.get('ep2_title', ''),
-            "rating": imdb_data.get('ep2_rating', ''),
-            "duration": imdb_data.get('ep2_duration', ''),
+            "title": imdb_data.get('ep2_title') or f"{fallback_ep_name} 2",
+            "rating": imdb_data.get('ep2_rating') or '8.0',
+            "duration": imdb_data.get('ep2_duration') or '24m',
             "image": imdb_data.get('ep2_thumb')
         }
     ]
@@ -695,13 +703,13 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             "box": (201, 834, 348, 975),
             "title_pos": (440, 845),
             "rating_pos": (465, 915),
-            "duration_pos": (550, 915)
+            "duration_pos": (580, 915) # Shifted right to avoid clock emoji
         },
         {
             "box": (1032, 834, 1182, 975),
             "title_pos": (1270, 845),
             "rating_pos": (1290, 915),
-            "duration_pos": (1380, 915)
+            "duration_pos": (1410, 915) # Shifted right to avoid clock emoji
         }
     ]
 
@@ -711,8 +719,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             ep = eps[i]
 
             ep_title_text = f"{ep['title']}"
-            if len(ep_title_text) > 30:
-                ep_title_text = ep_title_text[:28] + "..."
+            if len(ep_title_text) > 28:
+                ep_title_text = ep_title_text[:25] + "..."
             
             if ep_title_text:
                 ep_draw_commands.append((ep_info["title_pos"], ep_title_text, font_ep_title_small))
@@ -733,8 +741,22 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 except:
                     pass
 
-            if not thumb_img:
-                thumb_img = Image.new("RGBA", (200, 200), (80, 80, 80, 255))
+            # Smart Fallback: If Jikan fails, use a crop of the main Fanart!
+            if not thumb_img and char_img:
+                try:
+                    thumb_img = char_img.copy()
+                    box_rect = ep_info["box"]
+                    box_w = box_rect[2] - box_rect[0]
+                    box_h = box_rect[3] - box_rect[1]
+                    img_w, img_h = thumb_img.size
+                    scale = max(box_w / img_w, box_h / img_h)
+                    new_w, new_h = int(img_w * scale), int(img_h * scale)
+                    thumb_img = thumb_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    left = (new_w - box_w) // 2
+                    top = (new_h - box_h) // 2
+                    thumb_img = thumb_img.crop((left, top, left + box_w, top + box_h))
+                except:
+                    thumb_img = Image.new("RGBA", (200, 200), (80, 80, 80, 255))
 
             try:
                 box_rect = ep_info["box"]
@@ -766,10 +788,11 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     for pos, text, font in genre_draw_commands:
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255))
 
+    # Ratings & Duration Shifted Left & Up
     if rating and rating != "N/A":
-        draw.text((1185, 520), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        draw.text((1150, 490), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
     if duration and duration != "N/A":
-        draw.text((1485, 520), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        draw.text((1440, 490), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
 
     for pos, text, font in synopsis_draw_commands:
         draw.text(pos, text, font=font, fill=(180, 180, 180, 255))
@@ -780,15 +803,16 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     for pos, text, font in ep_draw_commands:
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255), anchor="la")
 
-
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username:
         try:
-            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 20)
+            # Fixed font size to 16 to keep it inside the search bar
+            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 16)
         except:
             font_brand_small = font_brand
-
-        draw.text((260, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
+        
+        # Set X at 220 to avoid magnifying glass entirely
+        draw.text((220, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
 
     if logo_url:
         try:
@@ -813,6 +837,9 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             base.paste(logo_img, (lx, ly), mask)
         except Exception as e:
             pass
+
+    # Final Enhancement added to make Poster 3 crisp and remove blur
+    base = enhance_image(base)
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=95)
