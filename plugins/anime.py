@@ -194,18 +194,6 @@ async def anime_cmd(client: Bot, message: Message):
     ])
 
     await message.reply_text(f"SELECT SOURCE FOR: {query}", reply_markup=keyboard)
-            return
-    except:
-        user_data[user_id]['template_v'] = 1
-        pass
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(apply_small_caps("Anilist"), callback_data="search_anilist"),
-         InlineKeyboardButton(apply_small_caps("MyAnimeList"), callback_data="search_mal")],
-        [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
-    ])
-
-    await message.reply_text(f"SELECT SOURCE FOR: {query}", reply_markup=keyboard)
 
 
 @Bot.on_callback_query(filters.regex("^search_anilist$"), group=-1)
