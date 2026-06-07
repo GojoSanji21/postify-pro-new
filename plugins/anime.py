@@ -163,14 +163,37 @@ async def anime_cmd(client: Bot, message: Message):
         from databases.database import db
         template_v = await db.get_anime_template(user_id)
         user_data[user_id]['template_v'] = template_v
-        if template_v == 3:
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(apply_small_caps("AniList"), callback_data="search_anilist"),
-                 InlineKeyboardButton(apply_small_caps("MyAnimeList"), callback_data="search_mal")],
-                [InlineKeyboardButton(apply_small_caps("IMDb (Poster 3 Recommended)"), callback_data="search_mal")], # Using MAL for base search still works as long as IMDB data is appended later, but we add an explicit button to assure the user. Let's just use MAL for the base search to grab the title for IMDB.
-                [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
-            ])
-            await message.reply_text(f"SELECT SOURCE FOR: {query}\n\n*Note: Template 3 requires extra IMDb fetching.*", reply_markup=keyboard)
+    except:
+        user_data[user_id]['template_v'] = 1
+        template_v = 1
+
+    # POSTER 3 BYPASS: Directly fetch and show search results (No Anilist/MAL buttons)
+    if template_v == 3:
+        wait_msg = await message.reply_text("⏳ Searching IMDb Database...")
+        try:
+            results = await fetch_anime_search(query, "mal")
+            user_data[user_id]['results'] = results
+            if not results:
+                await wait_msg.edit_text("No results found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
+                return
+
+            buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
+            buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
+
+            await wait_msg.edit_text(f"SEARCH RESULTS (IMDb):", reply_markup=InlineKeyboardMarkup(buttons))
+            return
+        except Exception as e:
+            await wait_msg.edit_text(f"❌ Error: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
+            return
+
+    # Normal behavior for Poster 1 & 2
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(apply_small_caps("Anilist"), callback_data="search_anilist"),
+         InlineKeyboardButton(apply_small_caps("MyAnimeList"), callback_data="search_mal")],
+        [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
+    ])
+
+    await message.reply_text(f"SELECT SOURCE FOR: {query}", reply_markup=keyboard)
             return
     except:
         user_data[user_id]['template_v'] = 1
