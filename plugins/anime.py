@@ -10,7 +10,7 @@ from pyrogram import StopPropagation
 from pyrogram.errors import MessageNotModified
 from bot import Bot
 from databases.database import db
-from plugins.thumbnail_maker import generate_poster
+from plugins.thumbnail_maker import generate_poster, generate_poster_2
 from plugins.utils import apply_small_caps
 
 user_data = {}
@@ -156,18 +156,19 @@ async def anime_cmd(client: Bot, message: Message):
         'audio': None,
         'custom_image': None,
         'photo_msg_id': None,
-        'timestamp': time.time()
+        'timestamp': time.time(),
+        'move_mode': False,
+        'ep_move_mode': False,
+        'move_target': 'main'
     }
 
     try:
-        from databases.database import db
         template_v = await db.get_anime_template(user_id)
         user_data[user_id]['template_v'] = template_v
     except:
         user_data[user_id]['template_v'] = 1
         template_v = 1
 
-    # POSTER 3 BYPASS: Directly fetch and show search results (No Anilist/MAL buttons)
     if template_v == 3:
         wait_msg = await message.reply_text("⏳ Searching IMDb Database...")
         try:
@@ -179,20 +180,17 @@ async def anime_cmd(client: Bot, message: Message):
 
             buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
             buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
-
             await wait_msg.edit_text(f"SEARCH RESULTS (IMDb):", reply_markup=InlineKeyboardMarkup(buttons))
             return
         except Exception as e:
             await wait_msg.edit_text(f"❌ Error: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
             return
 
-    # Normal behavior for Poster 1 & 2
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(apply_small_caps("Anilist"), callback_data="search_anilist"),
          InlineKeyboardButton(apply_small_caps("MyAnimeList"), callback_data="search_mal")],
         [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
     ])
-
     await message.reply_text(f"SELECT SOURCE FOR: {query}", reply_markup=keyboard)
 
 
@@ -206,20 +204,17 @@ async def handle_anilist_search(client: Bot, callback_query: CallbackQuery):
     query = user_data[user_id]['query']
     await callback_query.answer("Fetching from AniList...")
     await callback_query.message.edit_text("Searching...")
-
     try:
         results = await fetch_anime_search(query, "anilist")
         user_data[user_id]['results'] = results
         if not results:
             await callback_query.message.edit_text("No results found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
             raise StopPropagation
-
         buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_ani_{i}")] for i, anime in enumerate(results)]
         buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
-
         await callback_query.message.edit_text(f"SEARCH RESULTS (ANILIST):", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ Error: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
+        pass
     raise StopPropagation
 
 
@@ -229,26 +224,21 @@ async def handle_mal_search(client: Bot, callback_query: CallbackQuery):
     if user_id not in user_data:
         await callback_query.answer("Session expired.", show_alert=True)
         raise StopPropagation
-
     query = user_data[user_id]['query']
     await callback_query.answer("Fetching from MAL...")
     await callback_query.message.edit_text("Searching...")
-
     try:
         results = await fetch_anime_search(query, "mal")
         user_data[user_id]['results'] = results
         if not results:
             await callback_query.message.edit_text("No results found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
             raise StopPropagation
-
         buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
         buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
-
         await callback_query.message.edit_text(f"SEARCH RESULTS (MAL):", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ Error: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
+        pass
     raise StopPropagation
-
 
 @Bot.on_callback_query(filters.regex("^close_anime_menu$"), group=-1)
 async def close_anime_menu(client: Bot, callback_query: CallbackQuery):
@@ -263,7 +253,6 @@ async def close_anime_menu(client: Bot, callback_query: CallbackQuery):
     await callback_query.message.delete()
     raise StopPropagation
 
-
 def get_initial_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(apply_small_caps("Custom Img"), callback_data="anime_thumb_custom"),
@@ -271,19 +260,14 @@ def get_initial_keyboard():
         [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
     ])
 
-
 @Bot.on_callback_query(filters.regex(r"^sel_(ani|mal)_(\d+)"), group=-1)
 async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if user_id not in user_data:
         await callback_query.answer("Session expired.", show_alert=True)
         raise StopPropagation
-
-    try:
-        await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
-    except MessageNotModified:
-        pass
-
+    try: await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
+    except MessageNotModified: pass
     idx = int(callback_query.matches[0].group(2))
     selected_anime = user_data[user_id]['results'][idx]
     user_data[user_id]['selected_anime'] = selected_anime
@@ -292,36 +276,28 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
     title_rom = selected_anime['title'].get('romaji', '')
     
     try:
-        from databases.database import db
         template_v = await db.get_anime_template(user_id)
         user_data[user_id]['template_v'] = template_v
         if template_v == 3:
-            try:
-                await callback_query.message.edit_text("⏳ Fetching IMDb & Episode Data...")
-            except MessageNotModified:
-                pass
+            try: await callback_query.message.edit_text("⏳ Fetching IMDb & Episode Data...")
+            except MessageNotModified: pass
             from plugins.imdb_scraper import async_scrape_imdb_data
             user_data[user_id]['imdb_data'] = await async_scrape_imdb_data(title_eng or title_rom)
-    except Exception as e:
-        pass
+    except: pass
 
-    try:
-        await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
-    except MessageNotModified:
-        pass
+    try: await callback_query.message.edit_text("⏳ Fetching High-Res Posters & Fanart...")
+    except MessageNotModified: pass
+
     images = []
     if selected_anime.get('bannerImage'): images.append(selected_anime['bannerImage'])
     if selected_anime.get('coverImage', {}).get('extraLarge'): images.append(selected_anime['coverImage']['extraLarge'])
-    
     extra = await fetch_extra_images(title_eng, title_rom, mal_id=selected_anime.get('mal_id'))
     images.extend(extra)
-    
     images = list(dict.fromkeys(images))
     user_data[user_id]['images'] = images
 
     img_url = images[0] if images else "https://via.placeholder.com/1920x1080"
     msg_text = apply_small_caps("Poster selection ready. Send custom image or skip to proceed.")
-
     try:
         await callback_query.message.delete()
         await client.send_photo(chat_id=callback_query.message.chat.id, photo=img_url, caption=msg_text, reply_markup=get_initial_keyboard())
@@ -329,14 +305,12 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
         await client.send_message(chat_id=callback_query.message.chat.id, text=f"{msg_text} \n\n (Preview failed: {e})", reply_markup=get_initial_keyboard())
     raise StopPropagation
 
-
 @Bot.on_callback_query(filters.regex("^anime_thumb_custom$"), group=-1)
 async def handle_anime_thumb_custom(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if user_id not in user_data:
         await callback_query.answer("Session expired.", show_alert=True)
         raise StopPropagation
-
     await callback_query.answer("Please send the custom photo now.")
     try:
         response = await client.ask(user_id, "Send the custom image for the poster now:", filters=filters.photo | filters.document, timeout=60)
@@ -346,7 +320,6 @@ async def handle_anime_thumb_custom(client: Bot, callback_query: CallbackQuery):
     except asyncio.TimeoutError:
         await client.send_message(user_id, "Timeout occurred. Custom upload canceled.")
     raise StopPropagation
-
 
 @Bot.on_callback_query(filters.regex("^anime_audio_menu$"), group=-1)
 async def anime_audio_menu(client: Bot, callback_query: CallbackQuery):
@@ -358,7 +331,6 @@ async def anime_audio_menu(client: Bot, callback_query: CallbackQuery):
         [InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]
     ])
     msg_text = "Select Audio Language or send custom text:"
-
     if callback_query.message.photo:
         await callback_query.message.delete()
         await client.send_message(user_id, msg_text, reply_markup=keyboard)
@@ -366,14 +338,12 @@ async def anime_audio_menu(client: Bot, callback_query: CallbackQuery):
         await callback_query.message.edit_text(msg_text, reply_markup=keyboard)
     raise StopPropagation
 
-
 @Bot.on_callback_query(filters.regex("^anime_audio_custom$"), group=-1)
 async def handle_anime_audio_custom(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if user_id not in user_data:
         await callback_query.answer("Session expired.", show_alert=True)
         raise StopPropagation
-
     await callback_query.answer("Please send the custom audio text now.")
     try:
         response = await client.ask(user_id, "Send the custom audio text:", timeout=60)
@@ -388,14 +358,11 @@ async def handle_anime_audio_custom(client: Bot, callback_query: CallbackQuery):
 async def build_final_poster(client, callback_query, user_id):
     anime = user_data[user_id]['selected_anime']
     title = anime['title']['english'] or anime['title']['romaji']
-    
     genres = "  ".join(anime.get('genres', [])[:3])
-    
     synopsis = anime.get('description', '')
     if synopsis:
         synopsis = synopsis.replace('<br>', '').replace('<i>', '').replace('</i>', '').replace('<b>', '').replace('</b>', '')
-    if synopsis and len(synopsis) > 300:
-        synopsis = synopsis[:297] + "..."
+    if synopsis and len(synopsis) > 300: synopsis = synopsis[:297] + "..."
 
     images = user_data[user_id]['images']
     img_idx = user_data[user_id]['current_image_idx']
@@ -404,7 +371,6 @@ async def build_final_poster(client, callback_query, user_id):
     crop_state = user_data[user_id]['crop_state']
     color_state = user_data[user_id]['color_state']
     audio = user_data[user_id].get('audio', 'N/A')
-
     color_info = COLORS[color_state]
 
     try:
@@ -413,14 +379,13 @@ async def build_final_poster(client, callback_query, user_id):
     except: small_caps = False
 
     try:
-        from databases.database import db
         if hasattr(db, 'get_anime_brand_text'):
             custom_text = await db.get_anime_brand_text(user_id)
             custom_logo = await db.get_anime_brand_logo(user_id)
         else:
             custom_text = await db.get_text(user_id)
             custom_logo = await db.get_logo(user_id)
-    except Exception:
+    except:
         custom_text = None
         custom_logo = None
 
@@ -430,124 +395,67 @@ async def build_final_poster(client, callback_query, user_id):
         try:
             usr = await client.get_users(user_id)
             fallback_name = f"@{usr.username}" if usr.username else usr.first_name
-        except Exception:
-            fallback_name = "PosterProBot"
+        except: fallback_name = "PosterProBot"
 
     final_username = custom_text if custom_text else fallback_name
-
-    try:
-        from databases.database import db
-        template_v = await db.get_anime_template(user_id)
-    except:
-        template_v = 1
-
-    user_data[user_id]['template_v'] = template_v
-
-
-    # Get offset and zoom values
-    offset_x = user_data[user_id].get('offset_x', 0)
-    offset_y = user_data[user_id].get('offset_y', 0)
-    zoom_scale = user_data[user_id].get('zoom_scale', 1.0)
+    template_v = user_data[user_id].get('template_v', 1)
 
     if template_v == 3:
         try:
             from plugins.thumbnail_maker import generate_poster_3
-
-            if 'imdb_data' not in user_data[user_id] or not user_data[user_id]['imdb_data'].get('ep1_title'):
-                from plugins.imdb_scraper import async_scrape_imdb_data
-                title_eng = title
-                user_data[user_id]['imdb_data'] = await async_scrape_imdb_data(title_eng)
             imdb_data = user_data[user_id].get('imdb_data', {})
-
             poster_buf = await generate_poster_3(
                 anime_img_url=image_url if not custom_image_path else None,
                 custom_image_path=custom_image_path,
-                title=title,
-                genres=genres,
-                synopsis=synopsis,
-                username=final_username,
-                logo_url=custom_logo,
-                small_caps=False,
-                offset_x=offset_x,
-                offset_y=offset_y,
-                zoom_scale=zoom_scale,
+                title=title, genres=genres, synopsis=synopsis,
+                username=final_username, logo_url=custom_logo, small_caps=False,
+                offset_x=user_data[user_id].get('offset_x', 0),
+                offset_y=user_data[user_id].get('offset_y', 0),
+                zoom_scale=user_data[user_id].get('zoom_scale', 1.0),
                 imdb_data=imdb_data,
                 custom_ep1_path=user_data[user_id].get('custom_ep1_path'),
-                custom_ep2_path=user_data[user_id].get('custom_ep2_path')
+                custom_ep2_path=user_data[user_id].get('custom_ep2_path'),
+                ep1_offset_x=user_data[user_id].get('ep1_offset_x', 0),
+                ep1_offset_y=user_data[user_id].get('ep1_offset_y', 0),
+                ep1_zoom=user_data[user_id].get('ep1_zoom', 1.0),
+                ep2_offset_x=user_data[user_id].get('ep2_offset_x', 0),
+                ep2_offset_y=user_data[user_id].get('ep2_offset_y', 0),
+                ep2_zoom=user_data[user_id].get('ep2_zoom', 1.0)
             )
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            from plugins.thumbnail_maker import generate_poster
             poster_buf = await generate_poster(
                 anime_img_url=image_url if not custom_image_path else None,
-                custom_image_path=custom_image_path,
-                title=title,
-                genres=genres,
-                synopsis=synopsis,
-                username=final_username,
-                logo_url=custom_logo,
-                crop_state=crop_state,
-                small_caps=False,
-                template_url=color_info['url'],
-                color_hex=color_info['hex']
+                custom_image_path=custom_image_path, title=title, genres=genres,
+                synopsis=synopsis, username=final_username, logo_url=custom_logo,
+                crop_state=crop_state, small_caps=False, template_url=color_info['url'], color_hex=color_info['hex']
             )
     elif template_v == 2:
         try:
             from plugins.thumbnail_maker import generate_poster_2
             poster_buf = await generate_poster_2(
                 anime_img_url=image_url if not custom_image_path else None,
-                custom_image_path=custom_image_path,
-                title=title,
-                genres=genres,
-                synopsis=synopsis,
-                username=final_username,
-                logo_url=custom_logo,
-                crop_state=crop_state,
-                small_caps=False,
-                template_url=color_info['url'],
-                color_hex=color_info['hex'],
-                offset_x=offset_x,
-                offset_y=offset_y,
-                zoom_scale=zoom_scale
+                custom_image_path=custom_image_path, title=title, genres=genres,
+                synopsis=synopsis, username=final_username, logo_url=custom_logo,
+                crop_state=crop_state, small_caps=False, template_url=color_info['url'],
+                color_hex=color_info['hex'], offset_x=user_data[user_id].get('offset_x', 0),
+                offset_y=user_data[user_id].get('offset_y', 0), zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
             )
-        except ImportError:
-            from plugins.thumbnail_maker import generate_poster
+        except:
             poster_buf = await generate_poster(
-                anime_img_url=image_url if not custom_image_path else None,
-                custom_image_path=custom_image_path,
-                title=title,
-                genres=genres,
-                synopsis=synopsis,
-                username=final_username,
-                logo_url=custom_logo,
-                crop_state=crop_state,
-                small_caps=False,
-                template_url=color_info['url'],
-                color_hex=color_info['hex']
+                anime_img_url=image_url if not custom_image_path else None, custom_image_path=custom_image_path,
+                title=title, genres=genres, synopsis=synopsis, username=final_username, logo_url=custom_logo,
+                crop_state=crop_state, small_caps=False, template_url=color_info['url'], color_hex=color_info['hex']
             )
     else:
-        from plugins.thumbnail_maker import generate_poster
         custom_bg_path = user_data[user_id].get('custom_bg_path', None)
         poster_buf = await generate_poster(
-            anime_img_url=image_url if not custom_image_path else None,
-            custom_image_path=custom_image_path,
-            title=title,
-            genres=genres,
-            synopsis=synopsis,
-            username=final_username,
-            logo_url=custom_logo,
-            crop_state=crop_state,
-            small_caps=False,
-            template_url=color_info['url'],
-            color_hex=color_info['hex'],
-            custom_bg_path=custom_bg_path
+            anime_img_url=image_url if not custom_image_path else None, custom_image_path=custom_image_path,
+            title=title, genres=genres, synopsis=synopsis, username=final_username, logo_url=custom_logo,
+            crop_state=crop_state, small_caps=False, template_url=color_info['url'], color_hex=color_info['hex'], custom_bg_path=custom_bg_path
         )
 
-    try:
-        caption_template = await db.get_caption(user_id)
+    try: caption_template = await db.get_caption(user_id)
     except: caption_template = None
-
     if not caption_template:
         caption_template = "<blockquote><b>{title}</b></blockquote>\n» Type: <code>{type}</code>\n» Rating: <code>{rating}</code>\n» Status: <code>{status}</code>\n» Episodes: <code>{episodes}</code>\n» Audio: <code>{audio}</code>\n» Genre: {genres}\n<blockquote expandable>➤ Synopsis: {plot}</blockquote>"
 
@@ -565,25 +473,49 @@ async def build_final_poster(client, callback_query, user_id):
     v_plot = apply_small_caps(synopsis) if small_caps else synopsis
     v_audio = apply_small_caps(audio) if small_caps else audio
 
-    try:
-        caption = caption_template.format(title=v_title, type=v_type, rating=v_rating, status=v_status, episodes=v_episodes, genres=v_genres, plot=v_plot, synopsis=v_plot, audio=v_audio, year="N/A", season="N/A")
-    except Exception:
-        caption = f"<blockquote><b>{v_title}</b></blockquote>\n» Audio: <code>{v_audio}</code>\n» Genres: {v_genres}"
+    try: caption = caption_template.format(title=v_title, type=v_type, rating=v_rating, status=v_status, episodes=v_episodes, genres=v_genres, plot=v_plot, synopsis=v_plot, audio=v_audio, year="N/A", season="N/A")
+    except: caption = f"<blockquote><b>{v_title}</b></blockquote>\n» Audio: <code>{v_audio}</code>\n» Genres: {v_genres}"
 
     return poster_buf, caption
 
-def get_final_keyboard(color_state, template_v=1):
-    from pyrogram.enums import ButtonStyle
+
+def get_final_keyboard(user_id):
+    color_state = user_data[user_id].get('color_state', 0)
+    template_v = user_data[user_id].get('template_v', 1)
     color_name = COLORS[color_state]['name']
 
     if template_v == 3:
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("𝗠𝗢𝗩𝗘", callback_data="anime_final_move", style=ButtonStyle.PRIMARY),
-             InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY)],
-            [InlineKeyboardButton("🎬 Edit Episodes", callback_data="anime_final_episodes", style=ButtonStyle.PRIMARY)],
-            [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
-             InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
-        ])
+        move_mode = user_data[user_id].get('move_mode', False)
+        ep_move_mode = user_data[user_id].get('ep_move_mode', False)
+
+        if move_mode:
+            target = user_data[user_id].get('move_target', 'main')
+            t_label = "MAIN IMAGE" if target == 'main' else ("EPISODE 1" if target == 'ep1' else "EPISODE 2")
+            return InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"🎯 Target: {t_label}", callback_data="anime_noop", style=ButtonStyle.PRIMARY)],
+                [InlineKeyboardButton("⬆️", callback_data="anime_final_up", style=ButtonStyle.SUCCESS)],
+                [InlineKeyboardButton("⬅️", callback_data="anime_final_left", style=ButtonStyle.SUCCESS),
+                 InlineKeyboardButton("⬇️", callback_data="anime_final_down", style=ButtonStyle.SUCCESS),
+                 InlineKeyboardButton("➡️", callback_data="anime_final_right", style=ButtonStyle.SUCCESS)],
+                [InlineKeyboardButton("🔍 IN", callback_data="anime_final_zoom_in", style=ButtonStyle.SUCCESS),
+                 InlineKeyboardButton("🔍 OUT", callback_data="anime_final_zoom_out", style=ButtonStyle.SUCCESS)],
+                [InlineKeyboardButton("🔙 BACK", callback_data="anime_move_back", style=ButtonStyle.DANGER)]
+            ])
+        elif ep_move_mode:
+            return InlineKeyboardMarkup([
+                [InlineKeyboardButton("Episode 1", callback_data="anime_target_ep1", style=ButtonStyle.PRIMARY),
+                 InlineKeyboardButton("Episode 2", callback_data="anime_target_ep2", style=ButtonStyle.PRIMARY)],
+                [InlineKeyboardButton("🔙 BACK", callback_data="anime_ep_move_back", style=ButtonStyle.DANGER)]
+            ])
+        else:
+            return InlineKeyboardMarkup([
+                [InlineKeyboardButton("✥ MOVE MAIN IMAGE", callback_data="anime_target_main", style=ButtonStyle.SUCCESS),
+                 InlineKeyboardButton("🔄 MOVE EPISODE", callback_data="anime_menu_ep_move", style=ButtonStyle.SUCCESS)],
+                [InlineKeyboardButton("🎬 EDIT EPISODES", callback_data="anime_final_episodes", style=ButtonStyle.PRIMARY),
+                 InlineKeyboardButton("𝗡𝗘𝗫𝗧 𝗜𝗠𝗔𝗚𝗘", callback_data="anime_final_next", style=ButtonStyle.PRIMARY)],
+                [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
+                 InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
+            ])
     elif template_v == 2:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("⬆️", callback_data="anime_final_up", style=ButtonStyle.PRIMARY)],
@@ -606,82 +538,6 @@ def get_final_keyboard(color_state, template_v=1):
             [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
              InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
         ])
-
-@Bot.on_callback_query(filters.regex("^anime_final_episodes$"), group=-1)
-async def handle_anime_final_episodes(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
-    from pyrogram.enums import ButtonStyle
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Episode 1", callback_data="anime_edit_ep1", style=ButtonStyle.PRIMARY),
-         InlineKeyboardButton("Episode 2", callback_data="anime_edit_ep2", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton("𝗕𝗔𝗖𝗞", callback_data="anime_final_ep_back", style=ButtonStyle.PRIMARY)]
-    ])
-    try:
-        await client.edit_message_reply_markup(
-            chat_id=user_id,
-            message_id=user_data[user_id]['controls_msg_id'],
-            reply_markup=keyboard
-        )
-    except Exception:
-        pass
-    raise StopPropagation
-
-@Bot.on_callback_query(filters.regex("^anime_final_ep_back$"), group=-1)
-async def handle_anime_final_ep_back(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-    try:
-        await client.edit_message_reply_markup(
-            chat_id=user_id,
-            message_id=user_data[user_id]['controls_msg_id'],
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-        )
-    except Exception:
-        pass
-    raise StopPropagation
-
-@Bot.on_callback_query(filters.regex("^anime_edit_ep(1|2)$"), group=-1)
-async def handle_anime_edit_ep(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
-    ep_num = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_edit_ep", "")
-
-    try:
-        response = await client.ask(
-            user_id,
-            f"Please send the custom image for Episode {ep_num}:",
-            filters=filters.photo | filters.document,
-            timeout=120
-        )
-        if response.photo or response.document:
-            wait_msg = await client.send_message(user_id, "Updating episode image...")
-            downloaded_path = await client.download_media(response)
-            user_data[user_id][f'custom_ep{ep_num}_path'] = downloaded_path
-            await wait_msg.delete()
-
-            poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-            await client.edit_message_media(
-                chat_id=user_id,
-                message_id=user_data[user_id]['photo_msg_id'],
-                media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-            )
-            if 'controls_msg_id' in user_data[user_id]:
-                await client.edit_message_reply_markup(
-                    chat_id=user_id,
-                    message_id=user_data[user_id]['controls_msg_id'],
-                    reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-                )
-    except asyncio.TimeoutError:
-        await client.send_message(user_id, f"Timeout. Episode {ep_num} image update canceled.")
-    except Exception as e:
-        await client.send_message(user_id, f"Failed to update Episode {ep_num} image: {e}")
-    raise StopPropagation
 
 @Bot.on_callback_query(filters.regex(r"^anime_final_bg$"), group=-1)
 async def handle_anime_final_bg(client: Bot, callback_query: CallbackQuery):
@@ -709,7 +565,7 @@ async def handle_anime_final_bg(client: Bot, callback_query: CallbackQuery):
                 await client.edit_message_reply_markup(
                     chat_id=user_id,
                     message_id=user_data[user_id]['controls_msg_id'],
-                    reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+                    reply_markup=get_final_keyboard(user_id)
                 )
     except asyncio.TimeoutError:
         await client.send_message(user_id, "Timeout occurred while waiting for background image.")
@@ -751,7 +607,7 @@ async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
         controls_msg = await client.send_message(
             chat_id=user_id,
             text=f"⚙️ **{apply_small_caps('POSTER CONTROLS:')}**\nUse buttons below to modify your poster:",
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+            reply_markup=get_final_keyboard(user_id)
         )
         user_data[user_id]['controls_msg_id'] = controls_msg.id
 
@@ -760,160 +616,178 @@ async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
 
     raise StopPropagation
 
-@Bot.on_callback_query(filters.regex("^anime_final_move$"), group=-1)
-async def handle_anime_final_move(client: Bot, callback_query: CallbackQuery):
+# ---- NEW MOVE MENU HANDLERS FOR TEMPLATE 3 ---- #
+@Bot.on_callback_query(filters.regex("^anime_target_main$"), group=-1)
+async def anime_target_main(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    user_data[user_id]['move_mode'] = True
+    user_data[user_id]['move_target'] = 'main'
+    await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_menu_ep_move$"), group=-1)
+async def anime_menu_ep_move(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    user_data[user_id]['ep_move_mode'] = True
+    await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_target_ep(1|2)$"), group=-1)
+async def anime_target_ep(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    target = f"ep{callback_query.matches[0].group(1)}" if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_target_", "")
+    user_data[user_id]['move_mode'] = True
+    user_data[user_id]['move_target'] = target
+    user_data[user_id]['ep_move_mode'] = False
+    await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_move_back$"), group=-1)
+async def anime_move_back(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    user_data[user_id]['move_mode'] = False
+    await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_ep_move_back$"), group=-1)
+async def anime_ep_move_back(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    user_data[user_id]['ep_move_mode'] = False
+    await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    raise StopPropagation
+
+# ----------------------------------------------- #
+
+@Bot.on_callback_query(filters.regex("^anime_final_episodes$"), group=-1)
+async def handle_anime_final_episodes(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if user_id not in user_data:
         return await callback_query.answer("Session expired.", show_alert=True)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Edit Episode 1", callback_data="anime_edit_ep1", style=ButtonStyle.PRIMARY),
+         InlineKeyboardButton("Edit Episode 2", callback_data="anime_edit_ep2", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton("🔙 BACK", callback_data="anime_final_ep_back", style=ButtonStyle.DANGER)]
+    ])
+    try: await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=keyboard)
+    except: pass
+    raise StopPropagation
 
+@Bot.on_callback_query(filters.regex("^anime_final_ep_back$"), group=-1)
+async def handle_anime_final_ep_back(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    try: await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    except: pass
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_edit_ep(1|2)$"), group=-1)
+async def handle_anime_edit_ep(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
+    ep_num = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_edit_ep", "")
+    try:
+        response = await client.ask(user_id, f"Please send the custom image for Episode {ep_num}:", filters=filters.photo | filters.document, timeout=120)
+        if response.photo or response.document:
+            wait_msg = await client.send_message(user_id, "Updating episode image...")
+            downloaded_path = await client.download_media(response)
+            user_data[user_id][f'custom_ep{ep_num}_path'] = downloaded_path
+            await wait_msg.delete()
+            poster_buf, caption = await build_final_poster(client, callback_query, user_id)
+            await client.edit_message_media(chat_id=user_id, message_id=user_data[user_id]['photo_msg_id'], media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML))
+            if 'controls_msg_id' in user_data[user_id]:
+                await client.edit_message_reply_markup(chat_id=user_id, message_id=user_data[user_id]['controls_msg_id'], reply_markup=get_final_keyboard(user_id))
+    except Exception as e: pass
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_final_move$"), group=-1)
+async def handle_anime_final_move(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     user_data[user_id]['crop_state'] = (user_data[user_id]['crop_state'] + 1) % 3
     states = ["Center Focus", "Top Focus (Face)", "Bottom Focus"]
     await callback_query.answer(f"Position: {states[user_data[user_id]['crop_state']]}", show_alert=False)
-
     try:
         poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-        await client.edit_message_media(
-            chat_id=user_id,
-            message_id=user_data[user_id]['photo_msg_id'],
-            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-        )
-        if 'controls_msg_id' in user_data[user_id]:
-            await client.edit_message_reply_markup(
-                chat_id=user_id,
-                message_id=user_data[user_id]['controls_msg_id'],
-                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-            )
-    except Exception:
-        pass
+        await client.edit_message_media(chat_id=user_id, message_id=user_data[user_id]['photo_msg_id'], media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML))
+    except: pass
     raise StopPropagation
-
 
 @Bot.on_callback_query(filters.regex(r"^anime_final_(up|down|left|right)$"), group=-1)
 async def handle_anime_final_move_dir(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     direction = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_final_", "")
 
-    if 'offset_x' not in user_data[user_id]: user_data[user_id]['offset_x'] = 0
-    if 'offset_y' not in user_data[user_id]: user_data[user_id]['offset_y'] = 0
+    target = user_data[user_id].get('move_target', 'main')
+    ox_key = 'offset_x' if target == 'main' else f'{target}_offset_x'
+    oy_key = 'offset_y' if target == 'main' else f'{target}_offset_y'
+    
+    if ox_key not in user_data[user_id]: user_data[user_id][ox_key] = 0
+    if oy_key not in user_data[user_id]: user_data[user_id][oy_key] = 0
 
-    MOVE_STEP = 50
-    if direction == "up":
-        user_data[user_id]['offset_y'] -= MOVE_STEP
-    elif direction == "down":
-        user_data[user_id]['offset_y'] += MOVE_STEP
-    elif direction == "left":
-        user_data[user_id]['offset_x'] -= MOVE_STEP
-    elif direction == "right":
-        user_data[user_id]['offset_x'] += MOVE_STEP
+    MOVE_STEP = 50 if target == 'main' else 20
+    if direction == "up": user_data[user_id][oy_key] -= MOVE_STEP
+    elif direction == "down": user_data[user_id][oy_key] += MOVE_STEP
+    elif direction == "left": user_data[user_id][ox_key] -= MOVE_STEP
+    elif direction == "right": user_data[user_id][ox_key] += MOVE_STEP
 
     await callback_query.answer(f"Moved {direction}", show_alert=False)
-
     try:
         poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-        await client.edit_message_media(
-            chat_id=user_id,
-            message_id=user_data[user_id]['photo_msg_id'],
-            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-        )
-        if 'controls_msg_id' in user_data[user_id]:
-            await client.edit_message_reply_markup(
-                chat_id=user_id,
-                message_id=user_data[user_id]['controls_msg_id'],
-                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-            )
-    except Exception as e:
-        pass
+        await client.edit_message_media(chat_id=user_id, message_id=user_data[user_id]['photo_msg_id'], media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML))
+    except: pass
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex(r"^anime_final_zoom_(in|out)$"), group=-1)
 async def handle_anime_final_zoom(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     action = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_final_zoom_", "")
 
-    if 'zoom_scale' not in user_data[user_id]: user_data[user_id]['zoom_scale'] = 1.0
+    target = user_data[user_id].get('move_target', 'main')
+    z_key = 'zoom_scale' if target == 'main' else f'{target}_zoom'
+    if z_key not in user_data[user_id]: user_data[user_id][z_key] = 1.0
 
-    ZOOM_STEP = 0.2
-    if action == "in":
-        user_data[user_id]['zoom_scale'] = min(3.0, user_data[user_id]['zoom_scale'] + ZOOM_STEP)
-    else:
-        user_data[user_id]['zoom_scale'] = max(0.5, user_data[user_id]['zoom_scale'] - ZOOM_STEP)
+    ZOOM_STEP = 0.2 if target == 'main' else 0.1
+    if action == "in": user_data[user_id][z_key] = min(3.0, user_data[user_id][z_key] + ZOOM_STEP)
+    else: user_data[user_id][z_key] = max(0.5, user_data[user_id][z_key] - ZOOM_STEP)
 
-    await callback_query.answer(f"Zoomed {action} (Scale: {user_data[user_id]['zoom_scale']:.1f}x)", show_alert=False)
-
+    await callback_query.answer(f"Zoomed {action} (Scale: {user_data[user_id][z_key]:.1f}x)", show_alert=False)
     try:
         poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-        await client.edit_message_media(
-            chat_id=user_id,
-            message_id=user_data[user_id]['photo_msg_id'],
-            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-        )
-        if 'controls_msg_id' in user_data[user_id]:
-            await client.edit_message_reply_markup(
-                chat_id=user_id,
-                message_id=user_data[user_id]['controls_msg_id'],
-                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-            )
-    except Exception as e:
-        pass
+        await client.edit_message_media(chat_id=user_id, message_id=user_data[user_id]['photo_msg_id'], media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML))
+    except: pass
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_final_next$"), group=-1)
 async def handle_anime_final_next(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     user_data[user_id]['current_image_idx'] = (user_data[user_id]['current_image_idx'] + 1) % max(1, len(user_data[user_id]['images']))
     await callback_query.answer("Loading next image...", show_alert=False)
-
     try:
         poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-        await client.edit_message_media(
-            chat_id=user_id,
-            message_id=user_data[user_id]['photo_msg_id'],
-            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-        )
-        if 'controls_msg_id' in user_data[user_id]:
-            await client.edit_message_reply_markup(
-                chat_id=user_id,
-                message_id=user_data[user_id]['controls_msg_id'],
-                reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-            )
-    except Exception:
-        pass
+        await client.edit_message_media(chat_id=user_id, message_id=user_data[user_id]['photo_msg_id'], media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML))
+    except: pass
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_final_color$"), group=-1)
 async def handle_anime_final_color(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     user_data[user_id]['color_state'] = (user_data[user_id]['color_state'] + 1) % len(COLORS)
     color_name = COLORS[user_data[user_id]['color_state']]['name']
-    
     await callback_query.answer(f"Applying {color_name} template...", show_alert=False)
-
     try:
         poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-        
-        await client.edit_message_media(
-            chat_id=user_id,
-            message_id=user_data[user_id]['photo_msg_id'],
-            media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-        )
-        
-        await callback_query.edit_message_reply_markup(
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-        )
-    except Exception:
-        pass
+        await client.edit_message_media(chat_id=user_id, message_id=user_data[user_id]['photo_msg_id'], media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML))
+        await callback_query.edit_message_reply_markup(reply_markup=get_final_keyboard(user_id))
+    except: pass
     raise StopPropagation
 
 def get_channel_pagination_keyboard(channels, page=0):
@@ -921,7 +795,6 @@ def get_channel_pagination_keyboard(channels, page=0):
     total_pages = (len(channels) + PER_PAGE - 1) // PER_PAGE
     start_idx = page * PER_PAGE
     end_idx = min(start_idx + PER_PAGE, len(channels))
-
     keyboard_buttons = []
     current_row = []
     for i in range(start_idx, end_idx):
@@ -930,18 +803,11 @@ def get_channel_pagination_keyboard(channels, page=0):
         if len(current_row) == 2:
             keyboard_buttons.append(current_row)
             current_row = []
-    if current_row:
-        keyboard_buttons.append(current_row)
-
+    if current_row: keyboard_buttons.append(current_row)
     pagination_row = []
-    if page > 0:
-        pagination_row.append(InlineKeyboardButton("⬅️", callback_data=f"anime_pub_page_{page-1}"))
-    if page < total_pages - 1:
-        pagination_row.append(InlineKeyboardButton("➡️", callback_data=f"anime_pub_page_{page+1}"))
-
-    if pagination_row:
-        keyboard_buttons.append(pagination_row)
-
+    if page > 0: pagination_row.append(InlineKeyboardButton("⬅️", callback_data=f"anime_pub_page_{page-1}"))
+    if page < total_pages - 1: pagination_row.append(InlineKeyboardButton("➡️", callback_data=f"anime_pub_page_{page+1}"))
+    if pagination_row: keyboard_buttons.append(pagination_row)
     keyboard_buttons.append([InlineKeyboardButton("𝗠𝗘𝗡𝗨", callback_data="close_anime_menu"), InlineKeyboardButton("𝗕𝗔𝗖𝗞", callback_data="close_anime_menu")])
     return InlineKeyboardMarkup(keyboard_buttons)
 
@@ -949,197 +815,130 @@ async def process_publish_workflow(client: Bot, callback_query: CallbackQuery, u
     channels = await db.get_user_channels(user_id)
     if not channels:
         msg = "You haven't added any channels. Use ➕ ᴀᴅᴅ ᴄʜᴀɴɴᴇʟ to add one first."
-        if edit_message:
-            await callback_query.message.edit_text(msg)
-        else:
-            await client.send_message(user_id, msg)
+        if edit_message: await callback_query.message.edit_text(msg)
+        else: await client.send_message(user_id, msg)
         return
-
     channels.sort(key=lambda x: str(x.get('title', '')).lower())
-
     keyboard = get_channel_pagination_keyboard(channels, page)
     msg_text = "Select a channel to publish to:"
-
-    if edit_message:
-        await callback_query.message.edit_text(msg_text, reply_markup=keyboard)
-    else:
-        await client.send_message(user_id, msg_text, reply_markup=keyboard)
+    if edit_message: await callback_query.message.edit_text(msg_text, reply_markup=keyboard)
+    else: await client.send_message(user_id, msg_text, reply_markup=keyboard)
 
 @Bot.on_callback_query(filters.regex(r"^anime_pub_page_(\d+)$"), group=-1)
 async def handle_anime_pub_page(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     page = int(callback_query.matches[0].group(1))
     await process_publish_workflow(client, callback_query, user_id, page=page, edit_message=True)
     raise StopPropagation
 
 def parse_anime_buttons(config_str: str, target_link: str) -> InlineKeyboardMarkup:
-    if not config_str:
-        return None
+    if not config_str: return None
     rows = []
     lines = config_str.strip().split('\n')
     for line in lines:
-        if not line.strip():
-            continue
+        if not line.strip(): continue
         buttons_in_row = line.split('&&')
         row = []
         for btn_str in buttons_in_row:
             parts = btn_str.split('-', 1)
             if len(parts) == 2:
-                btn_text = parts[0].strip()
-                style = ButtonStyle.DEFAULT
-
-                if btn_text.startswith('#p '):
-                    style = ButtonStyle.PRIMARY
-                    btn_text = btn_text[3:]
-                elif btn_text.startswith('#g '):
-                    style = ButtonStyle.SUCCESS
-                    btn_text = btn_text[3:]
-                elif btn_text.startswith('#r '):
-                    style = ButtonStyle.DANGER
-                    btn_text = btn_text[3:]
-                elif btn_text.startswith('#'):
-                    btn_text = btn_text.split(' ', 1)[1] if ' ' in btn_text else btn_text
-
+                btn_text, style = parts[0].strip(), ButtonStyle.DEFAULT
+                if btn_text.startswith('#p '): style, btn_text = ButtonStyle.PRIMARY, btn_text[3:]
+                elif btn_text.startswith('#g '): style, btn_text = ButtonStyle.SUCCESS, btn_text[3:]
+                elif btn_text.startswith('#r '): style, btn_text = ButtonStyle.DANGER, btn_text[3:]
+                elif btn_text.startswith('#'): btn_text = btn_text.split(' ', 1)[1] if ' ' in btn_text else btn_text
                 btn_url = parts[1].strip().replace('{link}', target_link)
                 row.append(InlineKeyboardButton(btn_text, url=btn_url, style=style))
-        if row:
-            rows.append(row)
+        if row: rows.append(row)
     return InlineKeyboardMarkup(rows) if rows else None
 
 async def send_anime_post(client: Bot, user_id: int, chat_id: int, pin: bool = False):
-    if user_id not in user_data or not user_data[user_id].get('photo_msg_id'):
-        return None
-
+    if user_id not in user_data or not user_data[user_id].get('photo_msg_id'): return None
     try:
         poster_buf, caption = await build_final_poster(client, None, user_id)
         post_link = user_data[user_id].get('post_link', '')
-
         button_config = await db.get_anime_button_config(user_id)
-        if not button_config:
-            button_config = "Join - {link} && Group - https://t.me/posterprobot\nFor More - https://t.me/posterprobot"
-
+        if not button_config: button_config = "Join - {link} && Group - https://t.me/posterprobot\nFor More - https://t.me/posterprobot"
         reply_markup = parse_anime_buttons(button_config, post_link)
-
-        msg = await client.send_photo(
-            chat_id=chat_id,
-            photo=poster_buf,
-            caption=caption,
-            parse_mode=ParseMode.HTML,
-            reply_markup=reply_markup
-        )
-
+        msg = await client.send_photo(chat_id=chat_id, photo=poster_buf, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         if pin:
-            try:
-                await msg.pin()
-            except Exception:
-                pass
+            try: await msg.pin()
+            except: pass
         return msg
-    except Exception as e:
-        import logging
-        logging.error(f"Error sending anime post: {e}")
-        return None
+    except Exception as e: return None
 
 @Bot.on_callback_query(filters.regex("^anime_pub_cancel_confirm$"), group=-1)
 async def handle_anime_pub_cancel_confirm(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     await process_publish_workflow(client, callback_query, user_id, page=0, edit_message=True)
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_pub_confirm$"), group=-1)
 async def handle_anime_pub_confirm(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
-    msg_text = """<blockquote>ᴛʜʀᴏᴜɢʜ ᴛʜɪs ᴍᴇɴᴜ ʏᴏᴜ ᴄᴀɴ sᴀᴠᴇ ᴛʜᴇ ᴘᴏsᴛ ᴛᴏ sᴇɴᴅ ɪᴛ ʟᴀᴛᴇʀ ᴏʀ ᴄʜᴏᴏsᴇ ᴀᴅᴅɪᴛɪᴏɴᴀʟ sᴇᴛᴛɪɴɢs ʙᴇғᴏʀᴇ sᴇɴᴅɪɴɢ ɪᴛ ɪɴ ᴏɴᴇ ᴏʀ ᴍᴏʀᴇ ᴄʜᴀɴɴᴇʟs.
-
-• Press "Schedule sending" to schedule the post to be sent at a future date
-• Press "Schedule deletion" to schedule the post to be deleted at a future date
-• Press "Pin post" to pin the post at the top of the channel.</blockquote>"""
-
+    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]: return await callback_query.answer("Session expired.", show_alert=True)
+    msg_text = "<blockquote>ᴛʜʀᴏᴜɢʜ ᴛʜɪs ᴍᴇɴᴜ ʏᴏᴜ ᴄᴀɴ sᴀᴠᴇ ᴛʜᴇ ᴘᴏsᴛ ᴛᴏ sᴇɴᴅ ɪᴛ ʟᴀᴛᴇʀ ᴏʀ ᴄʜᴏᴏsᴇ ᴀᴅᴅɪᴛɪᴏɴᴀʟ sᴇᴛᴛɪɴɢs ʙᴇғᴏʀᴇ sᴇɴᴅɪɴɢ ɪᴛ ɪɴ ᴏɴᴇ ᴏʀ ᴍᴏʀᴇ ᴄʜᴀɴɴᴇʟs.\n\n• Press \"Schedule sending\" to schedule the post\n• Press \"Schedule deletion\" to schedule the post to be deleted\n• Press \"Pin post\" to pin the post at the top of the channel.</blockquote>"
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("𝗦𝗘𝗡𝗗 𝗣𝗢𝗦𝗧", callback_data="anime_pub_send"), InlineKeyboardButton("𝗦𝗖𝗛𝗘𝗗𝗨𝗟𝗘", callback_data="anime_pub_schedule")],
         [InlineKeyboardButton("𝗦𝗘𝗡𝗗 𝗣𝗢𝗦𝗧 𝗧𝗢 𝗠𝗢𝗥𝗘 𝗖𝗛𝗔𝗡𝗡𝗘𝗟𝗦", callback_data="anime_pub_more")],
         [InlineKeyboardButton("𝗣𝗜𝗡 𝗣𝗢𝗦𝗧", callback_data="anime_pub_pin"), InlineKeyboardButton("𝗕𝗔𝗖𝗞", callback_data="anime_pub_back")],
         [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu")]
     ])
-
     await callback_query.message.edit_text(msg_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex(r"^anime_pub_ch_(-\d+|\d+)$"), group=-1)
 async def handle_anime_pub_ch(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     chat_id = int(callback_query.matches[0].group(1))
     user_data[user_id]['publish_chat_id'] = chat_id
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Confirm Sending", callback_data="anime_pub_confirm"), InlineKeyboardButton("No", callback_data="anime_pub_cancel_confirm")],
-        [InlineKeyboardButton("Back", callback_data="anime_pub_cancel_confirm")]
-    ])
-
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Confirm Sending", callback_data="anime_pub_confirm"), InlineKeyboardButton("No", callback_data="anime_pub_cancel_confirm")], [InlineKeyboardButton("Back", callback_data="anime_pub_cancel_confirm")]])
     await callback_query.message.edit_text("Do you want to post in this specific channel?", reply_markup=keyboard)
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_pub_back$"), group=-1)
 async def handle_anime_pub_back(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
+    if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     await process_publish_workflow(client, callback_query, user_id)
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_pub_send$"), group=-1)
 async def handle_anime_pub_send(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]: return await callback_query.answer("Session expired.", show_alert=True)
     chat_id = user_data[user_id]['publish_chat_id']
     await callback_query.message.edit_text("Sending post...")
     msg = await send_anime_post(client, user_id, chat_id)
-    if msg:
-        await callback_query.message.edit_text("Post sent successfully.")
-    else:
-        await callback_query.message.edit_text("Failed to send post.")
+    if msg: await callback_query.message.edit_text("Post sent successfully.")
+    else: await callback_query.message.edit_text("Failed to send post.")
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_pub_pin$"), group=-1)
 async def handle_anime_pub_pin(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]: return await callback_query.answer("Session expired.", show_alert=True)
     chat_id = user_data[user_id]['publish_chat_id']
     await callback_query.message.edit_text("Sending and pinning post...")
     msg = await send_anime_post(client, user_id, chat_id, pin=True)
-    if msg:
-        await callback_query.message.edit_text("Post sent and pinned successfully.")
-    else:
-        await callback_query.message.edit_text("Failed to send/pin post.")
+    if msg: await callback_query.message.edit_text("Post sent and pinned successfully.")
+    else: await callback_query.message.edit_text("Failed to send/pin post.")
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^anime_pub_more$"), group=-1)
 async def handle_anime_pub_more(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]: return await callback_query.answer("Session expired.", show_alert=True)
     chat_id = user_data[user_id]['publish_chat_id']
     await callback_query.message.edit_text("Sending post to current channel...")
     msg = await send_anime_post(client, user_id, chat_id)
     if msg:
         await callback_query.answer("Post sent. Select next channel.", show_alert=False)
         await process_publish_workflow(client, callback_query, user_id)
-    else:
-        await callback_query.message.edit_text("Failed to send post.")
+    else: await callback_query.message.edit_text("Failed to send post.")
     raise StopPropagation
 
 from datetime import datetime
@@ -1147,32 +946,17 @@ from datetime import datetime
 @Bot.on_callback_query(filters.regex("^anime_pub_schedule$"), group=-1)
 async def handle_anime_pub_schedule(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
+    if user_id not in user_data or 'publish_chat_id' not in user_data[user_id]: return await callback_query.answer("Session expired.", show_alert=True)
     chat_id = user_data[user_id]['publish_chat_id']
-
-    msg_text = """<blockquote>Sending schedule
-Write the date in which the post will be sent using this format:
-dd/mm/yy hh:mm
-
-Examples:
-<code>1/4/2022 22:30</code>
-<code>in 10 days 5 hours 2 minutes</code>
-<code>tomorrow at 12:00</code></blockquote>"""
-
+    msg_text = "<blockquote>Sending schedule\nWrite the date in which the post will be sent using this format:\ndd/mm/yy hh:mm\n\nExamples:\n<code>1/4/2022 22:30</code>\n<code>in 10 days 5 hours 2 minutes</code>\n<code>tomorrow at 12:00</code></blockquote>"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu")]])
-
     try:
         response = await client.ask(user_id, msg_text, reply_markup=keyboard, parse_mode=ParseMode.HTML, timeout=120)
-
         try:
             dt_str = response.text.strip()
             try:
-                if len(dt_str.split('/')[2].split(' ')[0]) == 2:
-                    dt_obj = datetime.strptime(dt_str, "%d/%m/%y %H:%M")
-                else:
-                    dt_obj = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
+                if len(dt_str.split('/')[2].split(' ')[0]) == 2: dt_obj = datetime.strptime(dt_str, "%d/%m/%y %H:%M")
+                else: dt_obj = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
             except ValueError:
                 from datetime import timedelta
                 dt_obj = datetime.now()
@@ -1183,29 +967,17 @@ Examples:
                 else:
                     await client.send_message(user_id, "Could not parse date format. Please use dd/mm/yy hh:mm (e.g. 15/05/24 14:30)")
                     return
-
-            client.scheduler.add_job(
-                send_anime_post,
-                'date',
-                run_date=dt_obj,
-                args=[client, user_id, chat_id]
-            )
+            client.scheduler.add_job(send_anime_post, 'date', run_date=dt_obj, args=[client, user_id, chat_id])
             await client.send_message(user_id, f"Post scheduled successfully for {dt_obj.strftime('%d/%m/%Y %H:%M')}.")
-        except Exception as e:
-            await client.send_message(user_id, f"Error parsing date or scheduling: {e}")
-
-    except asyncio.TimeoutError:
-        await client.send_message(user_id, "Scheduling canceled due to timeout.")
+        except Exception as e: await client.send_message(user_id, f"Error parsing date or scheduling: {e}")
+    except asyncio.TimeoutError: await client.send_message(user_id, "Scheduling canceled due to timeout.")
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^final_done$"), group=-1)
 async def handle_final_done(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     await callback_query.answer("Poster Done! Fetching channels...")
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu")]
-    ])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu")]])
     try:
         response = await client.ask(user_id, "<blockquote>ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴍᴇ ᴛʜᴇ ʟɪɴᴋ ғᴏʀ ᴛʜᴇ ᴘᴏsᴛ/ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ</blockquote>", reply_markup=keyboard, parse_mode=ParseMode.HTML, timeout=120)
         user_data[user_id]['post_link'] = response.text
