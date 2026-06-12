@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/app/main.py", line 1, in <module>
+    from bot import Bot
+  File "/app/bot.py", line 3, in <module>
+    from aiohttp import web
+ModuleNotFoundError: No module named 'aiohttp'
