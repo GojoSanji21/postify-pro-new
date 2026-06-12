@@ -303,7 +303,6 @@ async def handle_anime_select(client: Bot, callback_query: CallbackQuery):
             from plugins.imdb_scraper import async_scrape_imdb_data
             user_data[user_id]['imdb_data'] = await async_scrape_imdb_data(title_eng or title_rom)
     except Exception as e:
-        print(f"Error fetching template or IMDB data: {e}")
         pass
 
     try:
@@ -608,6 +607,82 @@ def get_final_keyboard(color_state, template_v=1):
              InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
         ])
 
+@Bot.on_callback_query(filters.regex("^anime_final_episodes$"), group=-1)
+async def handle_anime_final_episodes(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data:
+        return await callback_query.answer("Session expired.", show_alert=True)
+
+    from pyrogram.enums import ButtonStyle
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Episode 1", callback_data="anime_edit_ep1", style=ButtonStyle.PRIMARY),
+         InlineKeyboardButton("Episode 2", callback_data="anime_edit_ep2", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton("𝗕𝗔𝗖𝗞", callback_data="anime_final_ep_back", style=ButtonStyle.PRIMARY)]
+    ])
+    try:
+        await client.edit_message_reply_markup(
+            chat_id=user_id,
+            message_id=user_data[user_id]['controls_msg_id'],
+            reply_markup=keyboard
+        )
+    except Exception:
+        pass
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_final_ep_back$"), group=-1)
+async def handle_anime_final_ep_back(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data:
+        return await callback_query.answer("Session expired.", show_alert=True)
+    try:
+        await client.edit_message_reply_markup(
+            chat_id=user_id,
+            message_id=user_data[user_id]['controls_msg_id'],
+            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+        )
+    except Exception:
+        pass
+    raise StopPropagation
+
+@Bot.on_callback_query(filters.regex("^anime_edit_ep(1|2)$"), group=-1)
+async def handle_anime_edit_ep(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_data:
+        return await callback_query.answer("Session expired.", show_alert=True)
+
+    ep_num = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_edit_ep", "")
+
+    try:
+        response = await client.ask(
+            user_id,
+            f"Please send the custom image for Episode {ep_num}:",
+            filters=filters.photo | filters.document,
+            timeout=120
+        )
+        if response.photo or response.document:
+            wait_msg = await client.send_message(user_id, "Updating episode image...")
+            downloaded_path = await client.download_media(response)
+            user_data[user_id][f'custom_ep{ep_num}_path'] = downloaded_path
+            await wait_msg.delete()
+
+            poster_buf, caption = await build_final_poster(client, callback_query, user_id)
+            await client.edit_message_media(
+                chat_id=user_id,
+                message_id=user_data[user_id]['photo_msg_id'],
+                media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
+            )
+            if 'controls_msg_id' in user_data[user_id]:
+                await client.edit_message_reply_markup(
+                    chat_id=user_id,
+                    message_id=user_data[user_id]['controls_msg_id'],
+                    reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
+                )
+    except asyncio.TimeoutError:
+        await client.send_message(user_id, f"Timeout. Episode {ep_num} image update canceled.")
+    except Exception as e:
+        await client.send_message(user_id, f"Failed to update Episode {ep_num} image: {e}")
+    raise StopPropagation
+
 @Bot.on_callback_query(filters.regex(r"^anime_final_bg$"), group=-1)
 async def handle_anime_final_bg(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
@@ -685,79 +760,6 @@ async def handle_anime_generate(client: Bot, callback_query: CallbackQuery):
 
     raise StopPropagation
 
-@Bot.on_callback_query(filters.regex("^anime_final_episodes$"), group=-1)
-async def handle_anime_final_episodes(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
-    from pyrogram.enums import ButtonStyle
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Episode 1", callback_data="anime_edit_ep1", style=ButtonStyle.PRIMARY),
-         InlineKeyboardButton("Episode 2", callback_data="anime_edit_ep2", style=ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton("𝗕𝗔𝗖𝗞", callback_data="anime_final_ep_back", style=ButtonStyle.PRIMARY)]
-    ])
-    try:
-        await client.edit_message_reply_markup(
-            chat_id=user_id,
-            message_id=user_data[user_id]['controls_msg_id'],
-            reply_markup=keyboard
-        )
-    except Exception:
-        pass
-    raise StopPropagation
-
-@Bot.on_callback_query(filters.regex("^anime_final_ep_back$"), group=-1)
-async def handle_anime_final_ep_back(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-    try:
-        await client.edit_message_reply_markup(
-            chat_id=user_id,
-            message_id=user_data[user_id]['controls_msg_id'],
-            reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-        )
-    except Exception:
-        pass
-    raise StopPropagation
-
-@Bot.on_callback_query(filters.regex("^anime_edit_ep(1|2)$"), group=-1)
-async def handle_anime_edit_ep(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id not in user_data:
-        return await callback_query.answer("Session expired.", show_alert=True)
-
-    ep_num = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_edit_ep", "")
-
-    try:
-        response = await client.ask(
-            user_id,
-            f"Please send the custom image for Episode {ep_num}:",
-            filters=filters.photo | filters.document,
-            timeout=120
-        )
-        if response.photo or response.document:
-            downloaded_path = await response.download()
-            user_data[user_id][f'custom_ep{ep_num}_path'] = downloaded_path
-
-            poster_buf, caption = await build_final_poster(client, callback_query, user_id)
-            await client.edit_message_media(
-                chat_id=user_id,
-                message_id=user_data[user_id]['photo_msg_id'],
-                media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
-            )
-            # Restore the main keyboard
-            if 'controls_msg_id' in user_data[user_id]:
-                await client.edit_message_reply_markup(
-                    chat_id=user_id,
-                    message_id=user_data[user_id]['controls_msg_id'],
-                    reply_markup=get_final_keyboard(user_data[user_id]['color_state'], user_data[user_id].get('template_v', 1))
-                )
-    except Exception as e:
-        await client.send_message(user_id, f"Failed to update Episode {ep_num} image: {e}")
-    raise StopPropagation
-
 @Bot.on_callback_query(filters.regex("^anime_final_move$"), group=-1)
 async def handle_anime_final_move(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
@@ -816,7 +818,6 @@ async def handle_anime_final_move_dir(client: Bot, callback_query: CallbackQuery
             message_id=user_data[user_id]['photo_msg_id'],
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
         )
-        # Update the separate controls message to maintain state
         if 'controls_msg_id' in user_data[user_id]:
             await client.edit_message_reply_markup(
                 chat_id=user_id,
@@ -852,7 +853,6 @@ async def handle_anime_final_zoom(client: Bot, callback_query: CallbackQuery):
             message_id=user_data[user_id]['photo_msg_id'],
             media=InputMediaPhoto(poster_buf, caption=caption, parse_mode=ParseMode.HTML)
         )
-        # Update the separate controls message to maintain state
         if 'controls_msg_id' in user_data[user_id]:
             await client.edit_message_reply_markup(
                 chat_id=user_id,
@@ -862,6 +862,7 @@ async def handle_anime_final_zoom(client: Bot, callback_query: CallbackQuery):
     except Exception as e:
         pass
     raise StopPropagation
+
 @Bot.on_callback_query(filters.regex("^anime_final_next$"), group=-1)
 async def handle_anime_final_next(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
@@ -1165,18 +1166,14 @@ Examples:
     try:
         response = await client.ask(user_id, msg_text, reply_markup=keyboard, parse_mode=ParseMode.HTML, timeout=120)
 
-        # Simple parsing for dd/mm/yy hh:mm
         try:
-            # We'll just support the exact dd/mm/yy hh:mm for now since full NLP parsing is complex
             dt_str = response.text.strip()
-            # If length is 14 like 01/04/22 22:30 or 15 for 01/04/2022 22:30
             try:
                 if len(dt_str.split('/')[2].split(' ')[0]) == 2:
                     dt_obj = datetime.strptime(dt_str, "%d/%m/%y %H:%M")
                 else:
                     dt_obj = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
             except ValueError:
-                # Basic relative handling (very simplified)
                 from datetime import timedelta
                 dt_obj = datetime.now()
                 if "in" in dt_str.lower() and "minute" in dt_str.lower():
