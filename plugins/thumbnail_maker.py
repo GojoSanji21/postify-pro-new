@@ -514,32 +514,6 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
 # ==========================================
 # POSTER 3 ULTIMATE LOGIC
 # ==========================================
-async def async_fetch_jikan_episodes(anime_title):
-    # BULLETPROOF FALLBACK: Fetches from MAL if IMDb scraper fails
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.jikan.moe/v4/anime?q={urllib.parse.quote(anime_title)}&limit=1"
-            async with session.get(url, timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get('data'):
-                        mal_id = data['data'][0]['mal_id']
-                        ep_url = f"https://api.jikan.moe/v4/anime/{mal_id}/videos/episodes"
-                        async with session.get(ep_url, timeout=5) as ep_resp:
-                            if ep_resp.status == 200:
-                                ep_data = await ep_resp.json()
-                                eps = ep_data.get('data', [])
-                                if len(eps) >= 2:
-                                    return {
-                                        "ep1_title": eps[0].get("title"),
-                                        "ep1_thumb": eps[0].get("images", {}).get("jpg", {}).get("image_url"),
-                                        "ep2_title": eps[1].get("title"),
-                                        "ep2_thumb": eps[1].get("images", {}).get("jpg", {}).get("image_url")
-                                    }
-    except: pass
-    return {}
-
-
 async def generate_poster_3(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, offset_x=0, offset_y=0, zoom_scale=1.0, imdb_data=None, custom_ep1_path=None, custom_ep2_path=None):
     if imdb_data is None:
         imdb_data = {}
@@ -549,19 +523,19 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
     base_template = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
 
-    # SECURE MASKING: Only mask the purely white empty areas, completely protecting the Heart/Stream Now icons
+    # SECURE MASKING: Only mask the purely white empty areas
     template_arr = np.array(base_template)
-    white_mask = (template_arr[:,:,0] >= 250) & (template_arr[:,:,1] >= 250) & (template_arr[:,:,2] >= 250)
+    white_mask = (template_arr[:,:,0] >= 245) & (template_arr[:,:,1] >= 245) & (template_arr[:,:,2] >= 245)
 
     region_mask = np.zeros(template_arr.shape[:2], dtype=bool)
     # Fanart Box Region
     region_mask[156:696, 201:1005] = True
     
-    # 🚨 CRITICAL FIX: Explicitly PROTECT the UI buttons by removing them from the mask
+    # PROTECT THE UI BUTTONS
     # Heart Icon Region
-    region_mask[160:240, 200:280] = False
+    region_mask[160:240, 205:290] = False
     # Stream Now Button Region 
-    region_mask[580:680, 210:460] = False
+    region_mask[585:685, 210:460] = False
 
     # Episode Boxes
     region_mask[834:975, 201:348] = True    
@@ -580,8 +554,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             async with aiohttp.ClientSession() as session:
                 async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                     if resp.status == 200:
-                        img_data = await resp.read()
-                        char_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
+                        char_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
                     else:
                         char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
         else:
@@ -600,38 +573,41 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         paste_y = box_rect[1] + (box_h - new_h) // 2 + offset_y
 
         base_canvas.paste(scaled_char_img, (paste_x, paste_y))
-    except Exception as e:
+    except Exception:
         pass
 
     temp_draw = ImageDraw.Draw(base_template)
 
+    # BULLETPROOF FONT LOADING (Matches Poster 1 exactly to prevent crash)
     try:
-        font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 65)
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Bold.ttf"), 16) # Chhota font
-        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 35)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Regular.ttf"), 20) # Normal font
-        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 14) # Very small for search bar
-        font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 22)
-        font_ep_sub = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 16)
+        font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 65)
+        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 35)
+        font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 14)
+        font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 22)
     except:
-        font_title = font_genres = font_rating = font_synopsis = font_brand = font_ep_title = font_ep_sub = ImageFont.load_default()
+        font_title = font_rating = font_brand_small = font_ep_title = ImageFont.load_default()
+
+    try:
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 16)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 20)
+        font_ep_sub = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 16)
+    except:
+        try:
+            font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 16)
+            font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 20)
+            font_ep_sub = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 16)
+        except:
+            font_genres = font_synopsis = font_ep_sub = ImageFont.load_default()
 
     disp_title = apply_small_caps(title) if small_caps else title
-    title_lines = [disp_title]
+    title_lines = [disp_title] if disp_title else [""]
     if disp_title:
         title_lines = textwrap.wrap(disp_title, width=22)
         if len(title_lines) > 2:
             title_lines = title_lines[:2]
             title_lines[1] = title_lines[1] + "..."
 
-    if genres:
-        if ',' in genres:
-            genre_list = [g.strip() for g in genres.split(',')]
-        else:
-            genre_list = [g.strip() for g in genres.split()]
-    else:
-        genre_list = []
-
+    genre_list = [g.strip() for g in genres.split(',')] if ',' in genres else [g.strip() for g in genres.split()] if genres else []
     pills = [
         (1079, 332, 169, 72),
         (1337, 334, 242, 70),
@@ -656,8 +632,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     synopsis_draw_commands = []
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
-        box_x = 1100 # Shifted right away from "About" text
-        box_y = 640  # Shifted down
+        box_x = 1100 
+        box_y = 640  
         box_w = 680 
 
         words = clean_synopsis.split(' ')
@@ -675,15 +651,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             lines.append(' '.join(current_line))
 
         # Strict 1 line
-        max_lines = 1
-        if len(lines) > max_lines:
-            lines = lines[:max_lines]
-            last_line = lines[-1]
-            while temp_draw.textlength(last_line + "...read more", font=font_synopsis) > box_w and len(last_line) > 0:
-                last_line = last_line[:-1]
-            lines[-1] = last_line.strip() + "...read more"
-
-        synopsis_draw_commands.append(((box_x, box_y), lines[0], font_synopsis))
+        if lines:
+            synopsis_draw_commands.append(((box_x, box_y), lines[0] + "...read more", font_synopsis))
 
     season_text = ""
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
@@ -691,38 +660,33 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         season_text = f"Season {season_match.group(1)}"
     
     season_x = 1630
-    season_y = 620 # Fits strictly inside the bottom-right button
-
-    # Fetch Jikan Data if IMDB failed
-    jikan_data = {}
-    if not imdb_data.get('ep1_thumb'):
-        jikan_data = await async_fetch_jikan_episodes(title)
+    season_y = 620 
 
     eps = [
         {
-            "title": imdb_data.get('ep1_title') or jikan_data.get('ep1_title') or "",
+            "title": imdb_data.get('ep1_title', ""),
             "rating": imdb_data.get('ep1_rating', ""),
             "duration": imdb_data.get('ep1_duration', ""),
-            "image": imdb_data.get('ep1_thumb') or jikan_data.get('ep1_thumb')
+            "image": imdb_data.get('ep1_thumb')
         },
         {
-            "title": imdb_data.get('ep2_title') or jikan_data.get('ep2_title') or "",
+            "title": imdb_data.get('ep2_title', ""),
             "rating": imdb_data.get('ep2_rating', ""),
             "duration": imdb_data.get('ep2_duration', ""),
-            "image": imdb_data.get('ep2_thumb') or jikan_data.get('ep2_thumb')
+            "image": imdb_data.get('ep2_thumb')
         }
     ]
     
     ep_coords = [
         {
             "box": (201, 834, 348, 975),
-            "title_pos": (450, 845),
+            "title_pos": (440, 845),
             "rating_pos": (465, 915),
             "duration_pos": (565, 915) 
         },
         {
             "box": (1032, 834, 1182, 975),
-            "title_pos": (1280, 845),
+            "title_pos": (1270, 845),
             "rating_pos": (1290, 915),
             "duration_pos": (1390, 915) 
         }
@@ -740,12 +704,12 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 ep_title_text = " ".join(words[:4]) + "..."
             
             if ep_title_text:
-                ep_draw_commands.append((ep_info["title_pos"], ep_title_text, font_ep_title_small))
+                ep_draw_commands.append((ep_info["title_pos"], ep_title_text, font_ep_title))
 
             if ep['rating'] and ep['rating'] != "N/A":
-                ep_draw_commands.append((ep_info["rating_pos"], f"{ep['rating']}", font_ep_sub_tiny))
+                ep_draw_commands.append((ep_info["rating_pos"], f"{ep['rating']}", font_ep_sub))
             if ep['duration'] and ep['duration'] != "N/A":
-                ep_draw_commands.append((ep_info["duration_pos"], f"{ep['duration'].replace(' min', '')}", font_ep_sub_tiny))
+                ep_draw_commands.append((ep_info["duration_pos"], f"{ep['duration'].replace(' min', '')}", font_ep_sub))
 
             thumb_img = None
             # Check for custom episode images first
@@ -765,8 +729,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                     async with aiohttp.ClientSession() as session:
                         async with session.get(ep["image"], headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                             if resp.status == 200:
-                                img_data = await resp.read()
-                                thumb_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
+                                thumb_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
                 except:
                     pass
 
@@ -820,12 +783,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username:
-        # Shrink to 14, position perfectly inside the search bar (X=190)
-        try:
-            font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Black.ttf"), 14)
-        except:
-            font_brand_small = font_brand
-        
         draw.text((190, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
 
     if logo_url:
@@ -834,8 +791,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 async with aiohttp.ClientSession() as session:
                     async with session.get(logo_url) as resp:
                         if resp.status == 200:
-                            l_data = await resp.read()
-                            logo_img = Image.open(io.BytesIO(l_data)).convert("RGBA")
+                            logo_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
