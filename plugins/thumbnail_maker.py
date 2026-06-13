@@ -565,21 +565,44 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
     base_template = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
 
-    # SECURE MASKING: Completely clear pure white areas without restrictions
+    # SECURE MASKING: Clear pure white areas safely
     template_arr = np.array(base_template)
     white_mask = (template_arr[:,:,0] >= 240) & (template_arr[:,:,1] >= 240) & (template_arr[:,:,2] >= 240)
 
     region_mask = np.zeros(template_arr.shape[:2], dtype=bool)
-    region_mask[140:710, 180:1030] = True   # Main Fanart Box
+    region_mask[140:710, 180:1030] = True   # Fanart Box
     region_mask[820:990, 180:370] = True    # Ep 1 Box
     region_mask[820:990, 1010:1200] = True  # Ep 2 Box
     
-    # 🚨 STREAM NOW FIX: No restrictions on masking, let it erase all pure white background completely
+    # NEW FIX: Top-Right Logo Circle Transparent Masking
+    region_mask[5:125, 1740:1900] = True    
+
+    # 🚨 STREAM NOW FIX: Strictly Protect "Stream Now" Text & Icon area so they don't turn transparent
+    region_mask[585:655, 230:450] = False
+
     template_arr[white_mask & region_mask, 3] = 0
     framed_template = Image.fromarray(template_arr)
 
     base_canvas = Image.new("RGBA", (1920, 1080), (30, 30, 30, 255))
     
+    try:
+        # Pagin Logo at the very back layer
+        if logo_url:
+            if logo_url.startswith("http"):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(logo_url) as resp:
+                        if resp.status == 200:
+                            logo_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+            else:
+                logo_img = Image.open(logo_url).convert("RGBA")
+
+            # Resize to fit behind the circle
+            logo_img = ImageOps.fit(logo_img, (120, 120), method=Image.Resampling.LANCZOS)
+            # Paste on base_canvas so template will nicely overlay it as a circle
+            base_canvas.paste(logo_img, (1755, 10), logo_img if logo_img.mode == 'RGBA' else None)
+    except Exception:
+        pass
+
     try:
         if custom_image_path:
             char_img = Image.open(custom_image_path).convert("RGBA")
@@ -597,16 +620,17 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     except Exception as e:
         pass
 
-    # BLUR FIX: Enhance the base canvas + template BEFORE drawing text
+    # IMPORTANT FIX: Enhance the base canvas + template BEFORE drawing text to prevent text blur!
     base = Image.alpha_composite(base_canvas, framed_template)
     base = enhance_image(base)
     
     draw = ImageDraw.Draw(base)
     temp_draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
 
+    # UNTOUCHED FONTS AS REQUESTED
     try:
         font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 80) 
-        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 58) # Increased rating size
+        font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 58) 
         font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) 
         font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 32) 
         font_season = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) 
@@ -614,8 +638,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         font_title = font_rating = font_brand_small = font_ep_title = font_season = ImageFont.load_default()
 
     try:
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 26) # Slightly smaller for fit
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) # Made smaller
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 26) 
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) 
         font_ep_dur = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 30) 
     except:
         font_genres = font_synopsis = font_ep_dur = ImageFont.load_default()
@@ -624,7 +648,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     title_words = disp_title.split() if disp_title else []
     title_lines = []
     
-    # Title Logic: 2 words on top, up to 3 words below with '...'
     if len(title_words) > 2:
         title_lines.append(" ".join(title_words[:2]))
         if len(title_words) > 5:
@@ -652,7 +675,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     synopsis_draw_commands = []
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
-        # EXACTLY 8 Words + ...read more
         words = clean_synopsis.split()
         final_synopsis = " ".join(words[:8]) + " ...read more"
         synopsis_draw_commands.append(((1100, 650), final_synopsis, font_synopsis))
@@ -660,7 +682,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     season_text = "SEASON 1"
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match: season_text = f"SEASON {season_match.group(1)}"
-    # Shifted Down and Right into the pill
     season_x, season_y = 1715, 780 
 
     jikan_data = {}
@@ -672,7 +693,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         {"title": imdb_data.get('ep2_title') or jikan_data.get('ep2_title') or "", "rating": imdb_data.get('ep2_rating', ""), "duration": imdb_data.get('ep2_duration', ""), "image": imdb_data.get('ep2_thumb') or jikan_data.get('ep2_thumb')}
     ]
     
-    # SHIFTED EXACT POSITIONS FOR E01/E02 Title and Duration
     ep_coords = [
         {"box": (201, 834, 348, 975), "title_pos": (550, 850), "duration_pos": (650, 915)}, 
         {"box": (1032, 834, 1182, 975), "title_pos": (1380, 850), "duration_pos": (1480, 915)} 
@@ -730,8 +750,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 base.paste(temp_box, (ep_info["box"][0], ep_info["box"][1]), temp_box)
             except: pass
 
-    # TEXT RENDERING
-
     if disp_title:
         title_y = 125
         for line in title_lines:
@@ -741,11 +759,10 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     for pos, text, font in genre_draw_commands:
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255), anchor="la")
 
-    # Ratings/Duration shifted UP and LEFT
     if rating and rating != "N/A":
         draw.text((1200, 495), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
     if duration and duration != "N/A":
-        draw.text((1540, 495), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        draw.text((1490, 495), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
 
     for pos, text, font in synopsis_draw_commands:
         draw.text(pos, text, font=font, fill=(180, 180, 180, 255), anchor="la")
@@ -758,33 +775,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username: 
-        # Shifted Branding Right to X=340
         draw.text((340, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
-
-    # TOP RIGHT LOGO FIX (Perfect Circle, proper coordinates)
-    if logo_url:
-        try:
-            if logo_url.startswith("http"):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(logo_url) as resp:
-                        if resp.status == 200:
-                            logo_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
-            else:
-                logo_img = Image.open(logo_url).convert("RGBA")
-
-            logo_size = 75
-            logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
-            
-            # Adjusted X and Y to perfectly fit the white circle top right
-            lx = 1750
-            ly = 25
-            
-            mask = Image.new("L", (logo_size, logo_size), 0)
-            d_mask = ImageDraw.Draw(mask)
-            d_mask.ellipse((0, 0, logo_size, logo_size), fill=255)
-            
-            base.paste(logo_img, (lx, ly), mask)
-        except: pass
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
