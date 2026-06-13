@@ -565,13 +565,17 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
     base_template = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
 
+    # SECURE MASKING: Only mask pure white, protect UI elements
     template_arr = np.array(base_template)
     white_mask = (template_arr[:,:,0] >= 240) & (template_arr[:,:,1] >= 240) & (template_arr[:,:,2] >= 240)
 
     region_mask = np.zeros(template_arr.shape[:2], dtype=bool)
-    region_mask[156:696, 201:1005] = True   
-    region_mask[834:975, 201:348] = True    
-    region_mask[834:975, 1032:1182] = True  
+    region_mask[150:700, 190:1020] = True   # Fanart Box
+    region_mask[830:980, 190:360] = True    # Ep 1
+    region_mask[830:980, 1020:1190] = True  # Ep 2
+    
+    # Exclude Stream Now Button from Masking
+    region_mask[570:670, 220:480] = False
 
     template_arr[white_mask & region_mask, 3] = 0
     framed_template = Image.fromarray(template_arr)
@@ -579,24 +583,27 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     base_canvas = Image.new("RGBA", (1920, 1080), (30, 30, 30, 255))
     
     try:
-        if custom_image_path: char_img = Image.open(custom_image_path).convert("RGBA")
+        if custom_image_path:
+            char_img = Image.open(custom_image_path).convert("RGBA")
         elif anime_img_url:
             async with aiohttp.ClientSession() as session:
                 async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
-                    if resp.status == 200: char_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
-                    else: char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
-        else: char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
-        
+                    if resp.status == 200:
+                        char_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+                    else:
+                        char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
+        else:
+            char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
+
         paste_with_crop(base_canvas, char_img, (201, 156, 1005, 696), offset_x, offset_y, zoom_scale)
-    except Exception:
+    except Exception as e:
         pass
 
-    # ==========================================
-    # BLUR FIX: Enhance image BEFORE drawing text
-    # ==========================================
+    # IMPORTANT FIX: Enhance the base canvas + template BEFORE drawing text to prevent text blur!
     base = Image.alpha_composite(base_canvas, framed_template)
-    base = enhance_image(base) 
+    base = enhance_image(base)
     
+    # Now we draw text on the already enhanced, crisp image
     draw = ImageDraw.Draw(base)
     temp_draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
 
@@ -604,15 +611,15 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 75) 
         font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 45) 
         font_brand_small = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 22) 
-        font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 26) 
+        font_ep_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 32) 
         font_season = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) 
     except:
         font_title = font_rating = font_brand_small = font_ep_title = font_season = ImageFont.load_default()
 
     try:
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) 
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 22) 
-        font_ep_dur = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 20) 
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 30) 
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 28) 
+        font_ep_dur = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 24) 
     except:
         font_genres = font_synopsis = font_ep_dur = ImageFont.load_default()
 
@@ -620,6 +627,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     title_words = disp_title.split() if disp_title else []
     title_lines = []
     
+    # Title Logic: 2 words on top, 3 words below with '...'
     if len(title_words) > 2:
         title_lines.append(" ".join(title_words[:2]))
         if len(title_words) > 5:
@@ -637,7 +645,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         display_g = apply_small_caps(g) if small_caps else g
         text_bbox = temp_draw.textbbox((0, 0), display_g, font=font_genres)
         tw, th = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
-        tx = px + (pw - tw) // 2 + 40 
+        tx = px + (pw - tw) // 2 + 55 
         ty = py + (ph - th) // 2 - 2
         genre_draw_commands.append(((tx, ty), display_g, font_genres))
 
@@ -676,7 +684,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     season_text = "SEASON 1"
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match: season_text = f"SEASON {season_match.group(1)}"
-    season_x, season_y = 1640, 740 
+    season_x, season_y = 1665, 745 
 
     jikan_data = {}
     if not imdb_data.get('ep1_thumb'):
@@ -688,8 +696,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     ]
     
     ep_coords = [
-        {"box": (201, 834, 348, 975), "title_pos": (485, 855), "duration_pos": (540, 925)},
-        {"box": (1032, 834, 1182, 975), "title_pos": (1315, 855), "duration_pos": (1370, 925)}
+        {"box": (201, 834, 348, 975), "title_pos": (550, 850), "duration_pos": (510, 930)},
+        {"box": (1032, 834, 1182, 975), "title_pos": (1380, 850), "duration_pos": (1340, 930)}
     ]
 
     ep_draw_commands = []
@@ -743,7 +751,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             except: pass
 
     if disp_title:
-        title_y = 125
+        title_y = 130
         for line in title_lines:
             draw.text((1125, title_y), line, font=font_title, fill=(255, 255, 255, 255), anchor="la")
             title_y += 85
@@ -752,9 +760,9 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255), anchor="la")
 
     if rating and rating != "N/A":
-        draw.text((1160, 510), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        draw.text((1260, 510), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
     if duration and duration != "N/A":
-        draw.text((1450, 510), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        draw.text((1560, 510), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
 
     for pos, text, font in synopsis_draw_commands:
         draw.text(pos, text, font=font, fill=(180, 180, 180, 255), anchor="la")
@@ -767,7 +775,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username: 
-        draw.text((260, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
+        # Shifted Branding Right to X=300
+        draw.text((300, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
 
     if logo_url:
         try:
@@ -779,13 +788,17 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            logo_img.thumbnail((96, 96), Image.Resampling.LANCZOS)
+            # Center of the white circle is approx (1832, 53)
+            # Size 80x80
+            logo_img.thumbnail((80, 80), Image.Resampling.LANCZOS)
             lw, lh = logo_img.size
-            lx = 1794 + (96 - lw) // 2
-            ly = 9 + (96 - lh) // 2
+            lx = 1832 - lw // 2
+            ly = 53 - lh // 2
+            
             mask = Image.new("L", (lw, lh), 0)
             d_mask = ImageDraw.Draw(mask)
             d_mask.ellipse((0, 0, lw, lh), fill=255)
+            
             base.paste(logo_img, (lx, ly), mask)
         except: pass
 
