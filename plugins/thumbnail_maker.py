@@ -57,7 +57,7 @@ def apply_small_caps(text):
 def colorize_template_2(template_img, new_hex):
     import numpy as np
     arr = np.array(template_img)
-    target_hex = new_hex.lstrip('#')
+    target_hex = color_hex.lstrip('#')
     new_r, new_g, new_b = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
 
     max_c = np.max(arr[:,:,:3], axis=2)
@@ -574,11 +574,12 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     region_mask[820:990, 180:370] = True    # Ep 1 Box
     region_mask[820:990, 1010:1200] = True  # Ep 2 Box
     
-    # NEW FIX: Top-Right Logo Circle Transparent Masking
+    # Logo Circle Transparent Masking
     region_mask[5:125, 1740:1900] = True    
 
-    # 🚨 STREAM NOW FIX: Strictly Protect "Stream Now" Text & Icon area so they don't turn transparent
-    region_mask[585:655, 230:450] = False
+    # 🚨 FIX: Tightly protect ONLY the text "Stream Now" and the play icon.
+    # This allows the white background around the button to become transparent!
+    region_mask[605:640, 265:420] = False
 
     template_arr[white_mask & region_mask, 3] = 0
     framed_template = Image.fromarray(template_arr)
@@ -596,9 +597,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            # Resize to fit behind the circle
             logo_img = ImageOps.fit(logo_img, (120, 120), method=Image.Resampling.LANCZOS)
-            # Paste on base_canvas so template will nicely overlay it as a circle
             base_canvas.paste(logo_img, (1755, 10), logo_img if logo_img.mode == 'RGBA' else None)
     except Exception:
         pass
@@ -620,14 +619,12 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     except Exception as e:
         pass
 
-    # IMPORTANT FIX: Enhance the base canvas + template BEFORE drawing text to prevent text blur!
     base = Image.alpha_composite(base_canvas, framed_template)
     base = enhance_image(base)
     
     draw = ImageDraw.Draw(base)
     temp_draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
 
-    # UNTOUCHED FONTS AS REQUESTED
     try:
         font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 80) 
         font_rating = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 58) 
@@ -682,7 +679,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     season_text = "SEASON 1"
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match: season_text = f"SEASON {season_match.group(1)}"
-    season_x, season_y = 1715, 780 
+    # Shifted slightly UP from 780 to 768
+    season_x, season_y = 1715, 768 
 
     jikan_data = {}
     if not imdb_data.get('ep1_thumb'):
@@ -762,7 +760,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     if rating and rating != "N/A":
         draw.text((1200, 495), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
     if duration and duration != "N/A":
-        draw.text((1490, 495), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        # Shifted right from 1540 to 1590
+        draw.text((1590, 495), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
 
     for pos, text, font in synopsis_draw_commands:
         draw.text(pos, text, font=font, fill=(180, 180, 180, 255), anchor="la")
@@ -776,6 +775,30 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username: 
         draw.text((340, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
+
+    # TOP RIGHT LOGO FIX
+    if logo_url:
+        try:
+            if logo_url.startswith("http"):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(logo_url) as resp:
+                        if resp.status == 200:
+                            logo_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+            else:
+                logo_img = Image.open(logo_url).convert("RGBA")
+
+            logo_size = 75
+            logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
+            
+            lx = 1750
+            ly = 25
+            
+            mask = Image.new("L", (logo_size, logo_size), 0)
+            d_mask = ImageDraw.Draw(mask)
+            d_mask.ellipse((0, 0, logo_size, logo_size), fill=255)
+            
+            base.paste(logo_img, (lx, ly), mask)
+        except: pass
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
