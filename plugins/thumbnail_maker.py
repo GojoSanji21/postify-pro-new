@@ -574,20 +574,18 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     region_mask[820:990, 180:370] = True    # Ep 1 Box
     region_mask[820:990, 1010:1200] = True  # Ep 2 Box
     
-    # Logo Circle Transparent Masking
-    region_mask[5:125, 1740:1900] = True    
+    # 🚨 LOGO CIRCLE FIX: Ensure the white circle at Top Right becomes perfectly transparent
+    region_mask[5:130, 1740:1900] = True    
 
-    # 🚨 FIX: Tightly protect ONLY the text "Stream Now" and the play icon.
-    # This allows the white background around the button to become transparent!
-    region_mask[605:640, 265:420] = False
-
+    # Mask applied to template to clear the white boxes
     template_arr[white_mask & region_mask, 3] = 0
     framed_template = Image.fromarray(template_arr)
 
+    # Base Canvas (This is the background behind everything)
     base_canvas = Image.new("RGBA", (1920, 1080), (30, 30, 30, 255))
     
     try:
-        # Pagin Logo at the very back layer
+        # User Branding Logo: Pasted at the BACK, so the template's hole will frame it
         if logo_url:
             if logo_url.startswith("http"):
                 async with aiohttp.ClientSession() as session:
@@ -597,8 +595,11 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            logo_img = ImageOps.fit(logo_img, (120, 120), method=Image.Resampling.LANCZOS)
-            base_canvas.paste(logo_img, (1755, 10), logo_img if logo_img.mode == 'RGBA' else None)
+            # Size big enough to cover the hole completely
+            logo_size = 110 
+            logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
+            # Pasted directly behind the hole coordinates
+            base_canvas.paste(logo_img, (1780, 10), logo_img if logo_img.mode == 'RGBA' else None)
     except Exception:
         pass
 
@@ -615,15 +616,33 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         else:
             char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
 
+        # Paste Main Fanart on the base canvas
         paste_with_crop(base_canvas, char_img, (201, 156, 1005, 696), offset_x, offset_y, zoom_scale)
     except Exception as e:
         pass
 
+    # BLUR FIX: Enhance the base canvas + template BEFORE drawing text!
     base = Image.alpha_composite(base_canvas, framed_template)
     base = enhance_image(base)
     
     draw = ImageDraw.Draw(base)
     temp_draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+
+    # 🚨 STREAM NOW FIX: Hand-drawn perfectly over the fanart
+    # No white boxes, no transparent text!
+    sn_x1, sn_y1 = 235, 575
+    sn_x2, sn_y2 = 475, 645
+    # Dark Button Background
+    draw.rounded_rectangle([sn_x1, sn_y1, sn_x2, sn_y2], radius=18, fill=(35, 35, 40, 255), outline=(180, 180, 180, 200), width=2)
+    # Stream Now Text
+    try:
+        sn_font = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 28)
+    except:
+        sn_font = ImageFont.load_default()
+    draw.text((280, 595), "Stream Now", font=sn_font, fill=(255, 255, 255, 255))
+    # Play Polygon
+    px, py = 425, 600
+    draw.polygon([(px, py), (px, py+20), (px+15, py+10)], outline=(255, 255, 255, 255), width=2)
 
     try:
         font_title = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 80) 
@@ -679,8 +698,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     season_text = "SEASON 1"
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match: season_text = f"SEASON {season_match.group(1)}"
-    # Shifted slightly UP from 780 to 768
-    season_x, season_y = 1715, 768 
+    # Shifted slightly UP to center perfectly
+    season_x, season_y = 1715, 758 
 
     jikan_data = {}
     if not imdb_data.get('ep1_thumb'):
@@ -691,9 +710,10 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         {"title": imdb_data.get('ep2_title') or jikan_data.get('ep2_title') or "", "rating": imdb_data.get('ep2_rating', ""), "duration": imdb_data.get('ep2_duration', ""), "image": imdb_data.get('ep2_thumb') or jikan_data.get('ep2_thumb')}
     ]
     
+    # SHIFTED DURATION POSITIONS LEFT to avoid extreme right
     ep_coords = [
-        {"box": (201, 834, 348, 975), "title_pos": (550, 850), "duration_pos": (650, 915)}, 
-        {"box": (1032, 834, 1182, 975), "title_pos": (1380, 850), "duration_pos": (1480, 915)} 
+        {"box": (201, 834, 348, 975), "title_pos": (550, 850), "duration_pos": (610, 915)}, 
+        {"box": (1032, 834, 1182, 975), "title_pos": (1380, 850), "duration_pos": (1440, 915)} 
     ]
 
     ep_draw_commands = []
@@ -748,6 +768,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 base.paste(temp_box, (ep_info["box"][0], ep_info["box"][1]), temp_box)
             except: pass
 
+    # TEXT RENDERING
+
     if disp_title:
         title_y = 125
         for line in title_lines:
@@ -757,11 +779,12 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     for pos, text, font in genre_draw_commands:
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255), anchor="la")
 
+    # Ratings/Duration shifted properly
     if rating and rating != "N/A":
-        draw.text((1200, 495), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        draw.text((1200, 490), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
     if duration and duration != "N/A":
-        # Shifted right from 1540 to 1590
-        draw.text((1590, 495), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
+        # Shifted left from 1590 to 1520
+        draw.text((1520, 490), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
 
     for pos, text, font in synopsis_draw_commands:
         draw.text(pos, text, font=font, fill=(180, 180, 180, 255), anchor="la")
@@ -774,31 +797,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username: 
-        draw.text((340, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
-
-    # TOP RIGHT LOGO FIX
-    if logo_url:
-        try:
-            if logo_url.startswith("http"):
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(logo_url) as resp:
-                        if resp.status == 200:
-                            logo_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
-            else:
-                logo_img = Image.open(logo_url).convert("RGBA")
-
-            logo_size = 75
-            logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
-            
-            lx = 1750
-            ly = 25
-            
-            mask = Image.new("L", (logo_size, logo_size), 0)
-            d_mask = ImageDraw.Draw(mask)
-            d_mask.ellipse((0, 0, logo_size, logo_size), fill=255)
-            
-            base.paste(logo_img, (lx, ly), mask)
-        except: pass
+        # Shifted Branding Right to X=360
+        draw.text((360, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
