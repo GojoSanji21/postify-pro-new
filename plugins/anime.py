@@ -854,14 +854,23 @@ def parse_anime_buttons(config_str: str, target_link: str) -> InlineKeyboardMark
     return InlineKeyboardMarkup(rows) if rows else None
 
 async def send_anime_post(client: Bot, user_id: int, chat_id: int, pin: bool = False):
-    if user_id not in user_data or not user_data[user_id].get('photo_msg_id'): return None
+    if user_id not in user_data: return None
+    is_create = user_data[user_id].get('is_create_mode')
+    if not is_create and not user_data[user_id].get('photo_msg_id'): return None
     try:
-        poster_buf, caption = await build_final_poster(client, None, user_id)
         post_link = user_data[user_id].get('post_link', '')
         button_config = await db.get_anime_button_config(user_id)
         if not button_config: button_config = "Join - {link} && Group - https://t.me/posterprobot\nFor More - https://t.me/posterprobot"
         reply_markup = parse_anime_buttons(button_config, post_link)
-        msg = await client.send_photo(chat_id=chat_id, photo=poster_buf, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+
+        if is_create:
+            photo = user_data[user_id].get('create_image_url')
+            caption = user_data[user_id].get('create_caption')
+            msg = await client.send_photo(chat_id=chat_id, photo=photo, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        else:
+            poster_buf, caption = await build_final_poster(client, None, user_id)
+            msg = await client.send_photo(chat_id=chat_id, photo=poster_buf, caption=caption, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+
         if pin:
             try: await msg.pin()
             except: pass
@@ -955,17 +964,40 @@ async def handle_anime_pub_schedule(client: Bot, callback_query: CallbackQuery):
         try:
             dt_str = response.text.strip()
             try:
-                if len(dt_str.split('/')[2].split(' ')[0]) == 2: dt_obj = datetime.strptime(dt_str, "%d/%m/%y %H:%M")
-                else: dt_obj = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
-            except ValueError:
-                from datetime import timedelta
-                dt_obj = datetime.now()
-                if "in" in dt_str.lower() and "minute" in dt_str.lower():
-                    import re
-                    mins = re.search(r'in (\d+) minute', dt_str.lower())
-                    if mins: dt_obj += timedelta(minutes=int(mins.group(1)))
+                if '/' in dt_str:
+                    if len(dt_str.split('/')[2].split(' ')[0]) == 2: dt_obj = datetime.strptime(dt_str, "%d/%m/%y %H:%M")
+                    else: dt_obj = datetime.strptime(dt_str, "%d/%m/%Y %H:%M")
                 else:
-                    await client.send_message(user_id, "Could not parse date format. Please use dd/mm/yy hh:mm (e.g. 15/05/24 14:30)")
+                    raise ValueError
+            except (ValueError, IndexError):
+                from datetime import timedelta
+                import re
+                dt_obj = datetime.now()
+                dt_str_lower = dt_str.lower()
+
+                if "in " in dt_str_lower:
+                    days = re.search(r'(\d+)\s*day', dt_str_lower)
+                    hours = re.search(r'(\d+)\s*hour', dt_str_lower)
+                    mins = re.search(r'(\d+)\s*minute', dt_str_lower)
+
+                    d = int(days.group(1)) if days else 0
+                    h = int(hours.group(1)) if hours else 0
+                    m = int(mins.group(1)) if mins else 0
+
+                    if not (d or h or m):
+                        await client.send_message(user_id, "Could not parse relative date. Please specify days, hours, or minutes.")
+                        return
+                    dt_obj += timedelta(days=d, hours=h, minutes=m)
+                elif "tomorrow at " in dt_str_lower:
+                    time_match = re.search(r'tomorrow at (\d{1,2}:\d{2})', dt_str_lower)
+                    if time_match:
+                        t_obj = datetime.strptime(time_match.group(1), "%H:%M").time()
+                        dt_obj = datetime.combine(dt_obj.date() + timedelta(days=1), t_obj)
+                    else:
+                        await client.send_message(user_id, "Could not parse tomorrow time format. Please use 'tomorrow at hh:mm'.")
+                        return
+                else:
+                    await client.send_message(user_id, "Could not parse date format. Please use dd/mm/yy hh:mm (e.g. 15/05/24 14:30) or relative time like 'in 10 minutes' or 'tomorrow at 12:00'.")
                     return
             client.scheduler.add_job(send_anime_post, 'date', run_date=dt_obj, args=[client, user_id, chat_id])
             await client.send_message(user_id, f"Post scheduled successfully for {dt_obj.strftime('%d/%m/%Y %H:%M')}.")

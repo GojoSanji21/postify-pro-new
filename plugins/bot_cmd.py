@@ -556,3 +556,55 @@ async def remove_premium_user(client: Bot, message: Message):
     except Exception as e:
         logging.error(f"Error removing premium user: {e}")
         await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
+
+
+
+
+from plugins.anime import process_publish_workflow, user_data
+from plugins.utils import apply_small_caps
+from pyrogram.enums import ParseMode
+from pyrogram import StopPropagation
+import asyncio
+
+@Bot.on_message(filters.command('create') & filters.private)
+async def create_command(client: Bot, message: Message):
+    user_id = message.from_user.id
+    image_url = "https://graph.org/file/4579616111776d30d008f-5ac8b112f9fdd86cd5.jpg"
+    welcome_msg = apply_small_caps("welcome to the post creator. please click the button below to begin.")
+    caption = f"<blockquote><b>{welcome_msg}</b></blockquote>"
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Create Post", callback_data="start_create_post")]
+    ])
+
+    await message.reply_photo(photo=image_url, caption=caption, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+@Bot.on_callback_query(filters.regex('^start_create_post$'), group=-1)
+async def start_create_post_cb(client: Bot, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    await callback_query.answer("Starting post creation...")
+
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close")]])
+    try:
+        from databases.database import db
+        button_config = await db.get_anime_button_config(user_id)
+        if not button_config: button_config = "Join - {link} && Group - https://t.me/posterprobot\nFor More - https://t.me/posterprobot"
+
+        # Display the pre-saved auto-buttons or format
+        # Ask user for target link
+        response = await client.ask(user_id, f"<blockquote>Cᴜʀʀᴇɴᴛ Bᴜᴛᴛᴏɴs:\n\n<code>{button_config}</code>\n\nᴘʟᴇᴀsᴇ sᴇɴᴅ ᴍᴇ ᴛʜᴇ ʟɪɴᴋ ғᴏʀ ᴛʜᴇ ᴘᴏsᴛ/ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ</blockquote>", reply_markup=keyboard, parse_mode=ParseMode.HTML, timeout=120)
+
+        if user_id not in user_data:
+            user_data[user_id] = {}
+
+        user_data[user_id]['post_link'] = response.text
+        user_data[user_id]['is_create_mode'] = True
+        user_data[user_id]['create_image_url'] = "https://graph.org/file/4579616111776d30d008f-5ac8b112f9fdd86cd5.jpg"
+        welcome_msg = apply_small_caps("welcome to the post creator. please click the button below to begin.")
+        user_data[user_id]['create_caption'] = f"<blockquote><b>{welcome_msg}</b></blockquote>"
+
+        await process_publish_workflow(client, callback_query, user_id)
+
+    except asyncio.TimeoutError:
+        await client.send_message(user_id, "Publish process canceled due to timeout.")
+    raise StopPropagation

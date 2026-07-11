@@ -6,14 +6,14 @@ from plugins.utils import apply_small_caps
 import asyncio
 
 # Updated Main Settings Text with Small Caps and Quotes
-MAIN_SETTINGS_TEXT = f"""{apply_small_caps("i'm an auto post maker & thumb maker bot, built with love.")}
+MAIN_SETTINGS_TEXT = f"""<blockquote expandable>{apply_small_caps("i'm an auto post maker & thumb maker bot, built with love.")}
 
 {apply_small_caps("❝ ​❝ I’ll teach you about the world... and how limited your vision really is. ❞")}
 — {apply_small_caps("➳≛⃝ Gojo ×͜×")}
 
 ✖️ {apply_small_caps("choose the category for which you wanna get help.")} {apply_small_caps("ask your doubts at support chat.")}
 
-≡ {apply_small_caps("click below buttons to change or set its caption, buttons and template:")}"""
+≡ {apply_small_caps("click below buttons to change or set its caption, buttons and template:")}</blockquote>"""
 
 # FIX: Removed double header, removed extra spaces, added Quotes to Title, and added Audio.
 def get_anime_settings_text(current_template="Template 1 (Orange)", current_branding="FOR MORE VISIT @ANIME_VERSE", current_buttons="🔸 JOIN NOW TO WATCH ▾ - {link}"):
