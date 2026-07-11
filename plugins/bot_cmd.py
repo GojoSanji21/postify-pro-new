@@ -15,7 +15,8 @@ from helper_func import is_admin, get_readable_time, banUser
 from plugins.FORMATS import HELP_TEXT, BAN_TXT, CMD_TXT, USER_CMD_TXT, FSUB_CMD_TXT
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 from databases.database import db
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+# ⬇️ Is niche wali line ko dhyan se dekho, yahan comma ke baad CallbackQuery add kiya hai ⬇️
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 REPLY_ERROR = """ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴀs ᴀ ʀᴇᴘʟʏ ᴛᴏ ᴀɴʏ ᴛᴇʟᴇɢʀᴀᴍ ᴍᴇssᴀɢᴇ ᴡɪᴛʜᴏᴜᴛ ᴀɴʏ sᴘᴀᴄᴇs."""
 # Define a global variable to store the cancel state
