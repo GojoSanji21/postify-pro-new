@@ -24,7 +24,7 @@ SUPPORT_GROUP = os.environ.get("SUPPORT_GROUP", "-1002361458256")
 PORT = os.environ.get("PORT", "8040")
 
 #Database --⚠️ REQUIRED--
-DB_URL = os.environ.get("DB_URL", "mongodb+srv://adamopytbusiness1:uSswEjo4ZHMGDU8Z@cluster0.gqgmk.mongodb.net/?retryWrites=true&w=majority&appName=Postifyprobot")
+DB_URL = os.environ.get("DB_URL", "")
 DB_NAME = os.environ.get("DATABASE_NAME", "postifyprobot")
 
 START_PIC = os.environ.get("START_PIC", "https://graph.org/file/903f5b233999f02fa6015-76938468f549dac193.jpg")
