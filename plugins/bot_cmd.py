@@ -4,7 +4,7 @@
 
 import os
 import asyncio
-import logging as log
+import logging
 from asyncio import Lock
 from bot import Bot
 from config import OWNER_ID, SUPPORT_GROUP
@@ -136,7 +136,7 @@ async def send_text(client: Bot, message: Message):
 
 
 @Bot.on_message(filters.command('fcast') & filters.private & is_admin)
-async def send_text_fcast(client: Bot, message: Message):
+async def send_text(client: Bot, message: Message):
     global is_canceled
     async with cancel_lock:
         is_canceled = False
@@ -440,7 +440,7 @@ async def add_fsub_button_link(client: Bot, message: Message):
         count = await db.get_fsub_button_links_count()
         await message.reply(f"<b>✅ ʟɪɴᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!\n\n📊 ᴛᴏᴛᴀʟ /ʙʏᴛ ʟɪɴᴋs: {count}</b>")
     except Exception as e:
-        log.error(f"Error adding fsub button link: {e}")
+        logging.error(f"Error adding fsub button link: {e}")
         await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
 
 
@@ -456,7 +456,7 @@ async def remove_all_fsub_button_links(client: Bot, message: Message):
         await db.delete_all_fsub_button_links()
         await message.reply(f"<b>✅ ᴀʟʟ {count} /ʙʏᴛ ʟɪɴᴋs ʀᴇᴍᴏᴠᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>")
     except Exception as e:
-        log.error(f"Error removing fsub button links: {e}")
+        logging.error(f"Error removing fsub button links: {e}")
         await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
 
 
@@ -476,7 +476,7 @@ async def list_fsub_button_links(client: Bot, message: Message):
         text += f"\n<b>📊 ᴛᴏᴛᴀʟ: {len(links)} ʟɪɴᴋs</b>"
         await message.reply(text)
     except Exception as e:
-        log.error(f"Error listing fsub button links: {e}")
+        logging.error(f"Error listing fsub button links: {e}")
         await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
 #--------------------------------------------------------------[[PREMIUM COMMANDS]]---------------------------------------------------------------------------#
 
@@ -515,7 +515,7 @@ async def add_premium_user(client: Bot, message: Message):
         await message.reply(text_response)
 
     except Exception as e:
-        log.error(f"Error adding premium user: {e}")
+        logging.error(f"Error adding premium user: {e}")
         await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
 
 @Bot.on_message(filters.command('remove') & filters.private & is_admin)
@@ -555,7 +555,7 @@ async def remove_premium_user(client: Bot, message: Message):
         await message.reply(text_response)
         
     except Exception as e:
-        log.error(f"Error removing premium user: {e}")
+        logging.error(f"Error removing premium user: {e}")
         await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
 
 
@@ -609,4 +609,3 @@ async def start_create_post_cb(client: Bot, callback_query: CallbackQuery):
     except asyncio.TimeoutError:
         await client.send_message(user_id, "Publish process canceled due to timeout.")
     raise StopPropagation
-
