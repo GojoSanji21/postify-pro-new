@@ -1,611 +1,579 @@
-# +++ Made By Sanjiii [telegram username: @Urr_Sanjiii] +++
-#>>>> Forward mode By @metaui <<<<#
+#ᴜɪ ʙʏ @ᴜʀʀ_sᴀɴᴊɪɪɪ
 
-
-import os
+from bot import Bot
 import asyncio
 import logging
-from asyncio import Lock
-from bot import Bot
-from config import OWNER_ID, SUPPORT_GROUP
-import time
-from datetime import datetime 
+import re, requests
+from pyrogram.enums import ParseMode, ChatAction
+from helper_func import is_admin, banUser
+from plugins.FORMATS import *
+from plugins.autoDelete import convert_time
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
+from config import OWNER_ID, START_PIC
 from pyrogram import Client, filters
-from helper_func import is_admin, get_readable_time, banUser
-from plugins.FORMATS import HELP_TEXT, BAN_TXT, CMD_TXT, USER_CMD_TXT, FSUB_CMD_TXT
-from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
-from databases.database import db
-# ⬇️ Is niche wali line ko dhyan se dekho, yahan comma ke baad CallbackQuery add kiya hai ⬇️
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from databases.database import db 
+from plugins.query import *
 
-REPLY_ERROR = """ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴀs ᴀ ʀᴇᴘʟʏ ᴛᴏ ᴀɴʏ ᴛᴇʟᴇɢʀᴀᴍ ᴍᴇssᴀɢᴇ ᴡɪᴛʜᴏᴜᴛ ᴀɴʏ sᴘᴀᴄᴇs."""
-# Define a global variable to store the cancel state
-is_canceled = False
-cancel_lock = Lock()
 
-#Settings for banned users..
-@Bot.on_message(banUser & filters.private & filters.command(['start', 'help']))
-async def handle_banuser(client, message):
-    return await message.reply(text=BAN_TXT,)#💩)
 
-#--------------------------------------------------------------[[ADMIN COMMANDS]]---------------------------------------------------------------------------#
-# Handler for the /cancel command
-@Bot.on_message(filters.command('cancel') & filters.private & is_admin)
-async def cancel_broadcast(client: Bot, message: Message):
-    global is_canceled
-    async with cancel_lock:
-        is_canceled = True
+# Handler to display top anime with buttons
+@Bot.on_message(filters.command('top') & filters.private)
+async def top_anime_command(client: Client, message: Message):
+    try:
+        top_anime_list = await get_top_anime()
+        if not top_anime_list:
+            await message.reply("No top anime found at the moment.")
+            return
 
-@Bot.on_message(filters.command('broadcast') & filters.private & is_admin)
-async def send_text(client: Bot, message: Message):
-    global is_canceled
-    async with cancel_lock:
-        is_canceled = False
-    mode = False
-    broad_mode = ''
-    store = message.text.split()[1:]
-    
-    if store and len(store) == 1 and store[0] == 'silent':
-        mode = True
-        broad_mode = 'SILENT '
+        keyboard = [[InlineKeyboardButton(f"{style_anime_title(anime.get('title'))}", callback_data=f'detail_{anime.get("mal_id")}')] 
+                    for anime in top_anime_list[:10]]
+        keyboard.extend([
+            [InlineKeyboardButton("• ғᴏʀ ", url='https://t.me/Mugiwaras_Network'),
+             InlineKeyboardButton(" ᴍᴏʀᴇ •", url='https://t.me/Mugiwaras_Network')],
+            [InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data='close')]
+             ])
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-    if message.reply_to_message:
-        query = await db.full_userbase()
-        broadcast_msg = message.reply_to_message
-        total = len(query)
-        successful = 0
-        blocked = 0
-        deleted = 0
-        unsuccessful = 0
+        await message.reply_text(
+            "✨ ᴛᴏᴘ ᴀɴɪᴍᴇ ✨",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except Exception as e:
+        await message.reply(f"An error occurred: {str(e)}")
 
-        pls_wait = await message.reply("<i>ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴍᴇssᴀɢᴇ... ᴛʜɪs ᴡɪʟʟ ᴛᴀᴋᴇ sᴏᴍᴇ ᴛɪᴍᴇ.</i>")
-        bar_length = 20
-        final_progress_bar = "●" * bar_length
-        complete_msg = f"🤖 {broad_mode}ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ✅"
-        progress_bar = ''
-        last_update_percentage = 0
-        percent_complete = 0
-        update_interval = 0.05  # Update progress bar every 5%
+# Handler to display weekly anime with buttons
+@Bot.on_message(filters.command('weekly') & filters.private)
+async def weekly_anime_command(client: Client, message: Message):
+    try:
+        weekly_anime_list = await get_weekly_anime()
+        if not weekly_anime_list:
+            await message.reply("No weekly anime found at the moment.")
+            return
 
-        for i, chat_id in enumerate(query, start=1):
-            async with cancel_lock:
-                if is_canceled:
-                    final_progress_bar = progress_bar
-                    complete_msg = f"🤖 {broad_mode}ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴀɴᴄᴇʟᴇᴅ ❌"
-                    break
+        keyboard = [[InlineKeyboardButton(f"{style_anime_title(anime.get('title'))}", callback_data=f'detail_{anime.get("mal_id")}')] 
+                    for anime in weekly_anime_list[:10]]
+        keyboard.extend([
+            [InlineKeyboardButton("• ғᴏʀ ", url='https://t.me/Mugiwaras_Network'),
+             InlineKeyboardButton(" ᴍᴏʀᴇ •", url='https://t.me/Mugiwaras_Network')],
+            [InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data='close')]
+             ])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await message.reply_text(
+            "📅 ᴡᴇᴇᴋʟʏ ᴀɴɪᴍᴇ 📅",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except Exception as e:
+        await message.reply(f"An error occurred: {str(e)}")
+
+# Handler to search for anime with buttons
+@Bot.on_message(filters.command('search') & filters.private)
+async def search_anime_command(client: Client, message: Message):
+    query = " ".join(message.text.split()[1:])
+    if not query:
+        await message.reply("Please provide a search query.")
+        return
+
+    try:
+        search_results = await search_anime(query)
+        if not search_results:
+            await message.reply("No anime found for the search query.")
+            return
+
+        keyboard = [[InlineKeyboardButton(f"{get_anime_emoji(anime.get('title'))} {anime.get('title')}", callback_data=f'detail_{anime.get("mal_id")}')] 
+                    for anime in search_results[:10]]
+        keyboard.extend([
+            [InlineKeyboardButton("• ғᴏʀ ", url='https://t.me/Mugiwaras_Network'),
+             InlineKeyboardButton(" ᴍᴏʀᴇ •", url='t.me/Mugiwaras_Network')],
+            [InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data='close')]
+             ])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await message.reply_text(
+            f"🔍 Search Results for '{query}' 🔍",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except Exception as e:
+        await message.reply(f"An error occurred: {str(e)}")
+
+
+@Bot.on_message(filters.command('add_fsub') & filters.private & is_admin)
+async def add_forcesub(client: Client, message: Message):
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+    check = 0
+    channel_ids = await db.get_all_channels()
+    fsubs = message.text.split()[1:]
+
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]])
+
+    if not fsubs:
+        await pro.edit("<b>You need to add channel IDs\n\n<blockquote><u>EXAMPLE</u>: /add_fsub [channel_ids] :</b> You can add one or multiple channel IDs at a time.</blockquote>", reply_markup=reply_markup)
+        return
+
+    channel_list = ""
+    for id in fsubs:
+        try:
+            id = int(id)
+        except:
+            channel_list += f"<b><blockquote>Invalid ID: <code>{id}</code></blockquote></b>\n\n"
+            continue
+
+        if id in channel_ids:
+            channel_list += f"<blockquote><b>ID: <code>{id}</code>, already exists..</b></blockquote>\n\n"
+            continue
+
+        id = str(id)
+        if id.startswith('-') and id[1:].isdigit() and len(id) == 14:
             try:
-                await broadcast_msg.copy(chat_id, disable_notification=mode)
-                successful += 1
-            except FloodWait as e:
-                await asyncio.sleep(e.x)
-                await broadcast_msg.copy(chat_id, disable_notification=mode)
-                successful += 1
-            except UserIsBlocked:
-                await db.del_user(chat_id)
-                blocked += 1
-            except InputUserDeactivated:
-                await db.del_user(chat_id)
-                deleted += 1
+                data = await client.get_chat(id)
+                link = data.invite_link
+                cname = data.title
+
+                if not link:
+                    link = await client.export_chat_invite_link(id)
+
+                channel_list += f"<b><blockquote>NAME: <a href={link}>{cname}</a> (ID: <code>{id}</code>)</blockquote></b>\n\n"
+                check += 1
+
             except:
-                unsuccessful += 1
+                channel_list += f"<b><blockquote>ID: <code>{id}</code>\n<i>Unable to add force-sub, check the channel ID or bot permissions properly..</i></blockquote></b>\n\n"
 
-            # Calculate percentage complete
-            percent_complete = i / total
+        else:
+            channel_list += f"<b><blockquote>Invalid ID: <code>{id}</code></blockquote></b>\n\n"
+            continue
 
-            # Update progress bar
-            if percent_complete - last_update_percentage >= update_interval or last_update_percentage == 0:
-                num_blocks = int(percent_complete * bar_length)
-                progress_bar = "●" * num_blocks + "○" * (bar_length - num_blocks)
-    
-                # Send periodic status updates
-                status_update = f"""<b>🤖 {broad_mode}ʙʀᴏᴀᴅᴄᴀsᴛ ɪɴ ᴘʀᴏɢʀᴇss...
-
-<blockquote>⏳:</b> [{progress_bar}] <code>{percent_complete:.0%}</code></blockquote>
-
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>
-
-➪ ᴛᴏ sᴛᴏᴘ ᴛʜᴇ ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ: <b>/cancel</b>"""
-                await pls_wait.edit(status_update)
-                last_update_percentage = percent_complete
-
-        # Final status update
-        final_status = f"""<b>{complete_msg}
-
-<blockquote>ᴅᴏɴᴇ:</b> [{final_progress_bar}] {percent_complete:.0%}</blockquote>
-
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>"""
-        return await pls_wait.edit(final_status)
+    if check == len(fsubs):
+        for id in fsubs:
+            await db.add_channel(int(id))
+        await pro.edit(f'<b>ғᴏʀᴄᴇ-sᴜʙ ᴄʜᴀɴɴᴇʟ ᴀᴅᴅᴇᴅ ✅</b>\n\n{channel_list}', reply_markup=reply_markup, disable_web_page_preview=True)
 
     else:
-        msg = await message.reply(REPLY_ERROR)
-        await asyncio.sleep(8)
-        await msg.delete()
+        await pro.edit(f'<b>❌ Error occurred while adding force-sub channels</b>\n\n{channel_list.strip()}\n\n<b><i>Please try again...</i></b>', reply_markup=reply_markup, disable_web_page_preview=True)
 
 
-########=============================================================######
-              ### >>>>>>>>  Forward Mode Start <<<<<<< ###
-########=============================================================########
+@Bot.on_message(filters.command('del_fsub') & filters.private & is_admin)
+async def delete_all_forcesub(client: Client, message: Message):
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+    channels = await db.get_all_channels()
+    fsubs = message.text.split()[1:]
 
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]])
 
-@Bot.on_message(filters.command('fcast') & filters.private & is_admin)
-async def send_text(client: Bot, message: Message):
-    global is_canceled
-    async with cancel_lock:
-        is_canceled = False
-    mode = False
-    broad_mode = ''
-    store = message.text.split()[1:]
-    
-    if store and len(store) == 1 and store[0] == 'silent':
-        mode = True
-        broad_mode = 'SILENT '
+    if not fsubs:
+        return await pro.edit("<b>⁉️ Please, provide valid IDs or arguments\n\n<blockquote><u>EXAMPLES</u>:/del_fsub [channel_ids] :</b> To delete one or multiple specified IDs\n<code>/del_fsub all</code>: To delete all available force-sub IDs</blockquote>", reply_markup=reply_markup)
 
-    if message.reply_to_message:
-        query = await db.full_userbase()
-        broadcast_msg = message.reply_to_message
-        total = len(query)
-        successful = 0
-        blocked = 0
-        deleted = 0
-        unsuccessful = 0
+    if len(fsubs) == 1 and fsubs[0].lower() == "all":
+        if channels:
+            for id in channels:
+                await db.del_channel(id)
 
-        pls_wait = await message.reply("<i>ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴍᴇssᴀɢᴇ... ᴛʜɪs ᴡɪʟʟ ᴛᴀᴋᴇ sᴏᴍᴇ ᴛɪᴍᴇ.</i>")
-        bar_length = 20
-        final_progress_bar = "●" * bar_length
-        complete_msg = f"🤖 {broad_mode}ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ✅"
-        progress_bar = ''
-        last_update_percentage = 0
-        percent_complete = 0
-        update_interval = 0.05  # Update progress bar every 5%
+            ids = "\n".join(f"<blockquote><code>{channel}</code> ✅</blockquote>" for channel in channels)
+            return await pro.edit(f"<b>⛔️ All available channel IDs are deleted:\n{ids}</b>", reply_markup=reply_markup)
+        else:
+            return await pro.edit("<b><blockquote>⁉️ No channel IDs available to delete</blockquote></b>", reply_markup=reply_markup)
 
-        for i, chat_id in enumerate(query, start=1):
-            async with cancel_lock:
-                if is_canceled:
-                    final_progress_bar = progress_bar
-                    complete_msg = f"🤖 {broad_mode}ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴀɴᴄᴇʟᴇᴅ ❌"
-                    break
+    if len(channels) >= 1:
+        passed = ''
+        for sub_id in fsubs:
             try:
-                # ✅ Forwarding the message instead of copying
-                await client.forward_messages(chat_id, from_chat_id=message.chat.id, message_ids=broadcast_msg.id, disable_notification=mode)
-                successful += 1
-            except FloodWait as e:
-                await asyncio.sleep(e.x)
-                await client.forward_messages(chat_id, from_chat_id=message.chat.id, message_ids=broadcast_msg.id, disable_notification=mode)
-                successful += 1
-            except UserIsBlocked:
-                await db.del_user(chat_id)
-                blocked += 1
-            except InputUserDeactivated:
-                await db.del_user(chat_id)
-                deleted += 1
-            except Exception as e:
-                print(f"Error forwarding to {chat_id}: {e}")  # Debugging ke liye
-                unsuccessful += 1
+                id = int(sub_id)
+            except:
+                passed += f"<b><blockquote><i>Invalid ID: <code>{sub_id}</code></i></blockquote></b>\n"
+                continue
+            if id in channels:
+                await db.del_channel(id)
 
-            # Calculate percentage complete
-            percent_complete = i / total
+                passed += f"<blockquote><code>{id}</code> ✅</blockquote>\n"
+            else:
+                passed += f"<b><blockquote><code>{id}</code> not in force-sub channels</blockquote></b>\n"
 
-            # Update progress bar
-            if percent_complete - last_update_percentage >= update_interval or last_update_percentage == 0:
-                num_blocks = int(percent_complete * bar_length)
-                progress_bar = "●" * num_blocks + "○" * (bar_length - num_blocks)
-    
-                # Send periodic status updates
-                status_update = f"""<b>🤖 {broad_mode}ʙʀᴏᴀᴅᴄᴀsᴛ ɪɴ ᴘʀᴏɢʀᴇss...
-
-<blockquote>⏳:</b> [{progress_bar}] <code>{percent_complete:.0%}</code></blockquote>
-
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>
-
-➪ ᴛᴏ sᴛᴏᴘ ᴛʜᴇ ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ: <b>/cancel</b>"""
-                await pls_wait.edit(status_update)
-                last_update_percentage = percent_complete
-
-        # Final status update
-        final_status = f"""<b>{complete_msg}
-
-<blockquote>ᴅᴏɴᴇ:</b> [{final_progress_bar}] {percent_complete:.0%}</blockquote>
-
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>"""
-        return await pls_wait.edit(final_status)
+        await pro.edit(f"<b>⛔️ Provided channel IDs are deleted:\n\n{passed}</b>", reply_markup=reply_markup)
 
     else:
-        msg = await message.reply(REPLY_ERROR)
-        await asyncio.sleep(8)
-        await msg.delete()
-        
-
-########=============================================================########
-               ### >>>>>>>>  Forward Mode END <<<<<<< ###
-########=============================================================########
+        await pro.edit("<b><blockquote>⁉️ No channel IDs available to delete</blockquote></b>", reply_markup=reply_markup)
 
 
-########=============================================================########
-              ### >>>>>>>>  Pin Broadcast Mode <<<<<<< ###
-########=============================================================########
-
-@Bot.on_message(filters.command('bcast') & filters.private & is_admin)
-async def pin_broadcast(client: Bot, message: Message):
-    global is_canceled
-    async with cancel_lock:
-        is_canceled = False
-    mode = False
-    broad_mode = ''
-    store = message.text.split()[1:]
-    
-    if store and len(store) == 1 and store[0] == 'silent':
-        mode = True
-        broad_mode = 'SILENT '
-
-    if message.reply_to_message:
-        query = await db.full_userbase()
-        broadcast_msg = message.reply_to_message
-        total = len(query)
-        successful = 0
-        blocked = 0
-        deleted = 0
-        unsuccessful = 0
-        pinned = 0
-
-        pls_wait = await message.reply("<i>📌 ᴘɪɴɴɪɴɢ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴜsᴇʀs... ᴛʜɪs ᴡɪʟʟ ᴛᴀᴋᴇ sᴏᴍᴇ ᴛɪᴍᴇ.</i>")
-        bar_length = 20
-        final_progress_bar = "●" * bar_length
-        complete_msg = f"🤖 {broad_mode}ᴘɪɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ✅"
-        progress_bar = ''
-        last_update_percentage = 0
-        percent_complete = 0
-        update_interval = 0.05
-
-        for i, chat_id in enumerate(query, start=1):
-            async with cancel_lock:
-                if is_canceled:
-                    final_progress_bar = progress_bar
-                    complete_msg = f"🤖 {broad_mode}ᴘɪɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴀɴᴄᴇʟᴇᴅ ❌"
-                    break
+@Bot.on_message(filters.command('fsub_chnl') & filters.private & is_admin)
+async def get_forcesub(client: Client, message: Message):
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+    channels = await db.get_all_channels()
+    channel_list = "<b><blockquote>❌ No force sub channel found!</b></blockquote>"
+    if channels:
+        channel_list = ""
+        for id in channels:
+            await message.reply_chat_action(ChatAction.TYPING)
             try:
-                # Copy message first
-                copied_msg = await broadcast_msg.copy(chat_id, disable_notification=mode)
-                # Then pin it
-                await client.pin_chat_message(chat_id, copied_msg.id)
-                successful += 1
-                pinned += 1
-            except FloodWait as e:
-                await asyncio.sleep(e.x)
-                try:
-                    copied_msg = await broadcast_msg.copy(chat_id, disable_notification=mode)
-                    await client.pin_chat_message(chat_id, copied_msg.id)
-                    successful += 1
-                    pinned += 1
-                except:
-                    unsuccessful += 1
-            except UserIsBlocked:
-                await db.del_user(chat_id)
-                blocked += 1
-            except InputUserDeactivated:
-                await db.del_user(chat_id)
-                deleted += 1
-            except Exception as e:
-                print(f"Error pinning to {chat_id}: {e}")
-                unsuccessful += 1
+                data = await client.get_chat(id)
+                link = data.invite_link
+                cname = data.title
 
-            percent_complete = i / total
+                if not link:
+                    link = await client.export_chat_invite_link(id)
 
-            if percent_complete - last_update_percentage >= update_interval or last_update_percentage == 0:
-                num_blocks = int(percent_complete * bar_length)
-                progress_bar = "●" * num_blocks + "○" * (bar_length - num_blocks)
-    
-                status_update = f"""<b>🤖 {broad_mode}ᴘɪɴ ʙʀᴏᴀᴅᴄᴀsᴛ ɪɴ ᴘʀᴏɢʀᴇss...
+                channel_list += f"<b><blockquote>NAME: <a href={link}>{cname}</a>\n(ID: <code>{id}</code>)</blockquote></b>\n\n"
 
-<blockquote>⏳:</b> [{progress_bar}] <code>{percent_complete:.0%}</code></blockquote>
+            except:
+                channel_list += f"<b><blockquote>ID: <code>{id}</code>\n<i>Unable to load other details..</i></blockquote></b>\n\n"
 
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-📌 ᴘɪɴɴᴇᴅ: <code>{pinned}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]])
+    await message.reply_chat_action(ChatAction.CANCEL)
+    await pro.edit(f"<b>ғᴏʀᴄᴇ-sᴜʙ ᴄʜᴀɴɴᴇʟ ʟɪsᴛ:</b>\n\n{channel_list}", reply_markup=reply_markup, disable_web_page_preview=True)
 
-➪ ᴛᴏ sᴛᴏᴘ ᴛʜᴇ ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴘʟᴇᴀsᴇ ᴄʟɪᴄᴋ: <b>/cancel</b>"""
-                await pls_wait.edit(status_update)
-                last_update_percentage = percent_complete
 
-        final_status = f"""<b>{complete_msg}
+# Commands for adding admins by owner
+@Bot.on_message(filters.command('add_admins') & filters.private & filters.user(OWNER_ID))
+async def add_admins(client: Client, message: Message):
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+    check = 0
+    admin_ids = await db.get_all_admins()
+    admins = message.text.split()[1:]
 
-<blockquote>ᴅᴏɴᴇ:</b> [{final_progress_bar}] {percent_complete:.0%}</blockquote>
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]])
 
-<b>🚻 ᴛᴏᴛᴀʟ ᴜsᴇʀs: <code>{total}</code>
-✅ sᴜᴄᴄᴇssғᴜʟ: <code>{successful}</code>
-📌 ᴘɪɴɴᴇᴅ: <code>{pinned}</code>
-🚫 ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs: <code>{blocked}</code>
-⚠️ ᴅᴇʟᴇᴛᴇᴅ ᴀᴄᴄᴏᴜɴᴛs: <code>{deleted}</code>
-❌ ᴜɴsᴜᴄᴄᴇssғᴜʟ: <code>{unsuccessful}</code></b>"""
-        return await pls_wait.edit(final_status)
+    if not admins:
+        return await pro.edit("<b>You need to add admin IDs\n\n<blockquote><u>EXAMPLE</u>:\n/add_admins [user_id] :</b> You can add one or multiple user IDs at a time.</blockquote>", reply_markup=reply_markup)
+
+    admin_list = ""
+    for id in admins:
+        try:
+            id = int(id)
+        except:
+            admin_list += f"<blockquote><b>Invalid ID: <code>{id}</code></b></blockquote>\n"
+            continue
+
+        if id in admin_ids:
+            admin_list += f"<blockquote><b>ID: <code>{id}</code>, already exists..</b></blockquote>\n"
+            continue
+
+        id = str(id)
+        if id.isdigit() and len(id) == 10:
+            admin_list += f"<b><blockquote>(ID: <code>{id}</code>)</blockquote></b>\n"
+            check += 1
+        else:
+            admin_list += f"<blockquote><b>Invalid ID: <code>{id}</code></b></blockquote>\n"
+            continue
+
+    if check == len(admins):
+        for id in admins:
+            await db.add_admin(int(id))
+        await pro.edit(f'<b>New IDs added in admin list ✅</b>\n\n{admin_list}', reply_markup=reply_markup)
 
     else:
-        msg = await message.reply(REPLY_ERROR)
-        await asyncio.sleep(8)
-        await msg.delete()
-
-########=============================================================########
-               ### >>>>>>>>  Pin Broadcast END <<<<<<< ###
-########=============================================================########
+        await pro.edit(f'<b>❌ Error occurred while adding admins</b>\n\n{admin_list.strip()}\n\n<b><i>Please try again...</i></b>', reply_markup=reply_markup)
 
 
+@Bot.on_message(filters.command('del_admins') & filters.private & filters.user(OWNER_ID))
+async def delete_admins(client: Client, message: Message):
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+    admin_ids = await db.get_all_admins()
+    admins = message.text.split()[1:]
+
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]])
+
+    if not admins:
+        return await pro.edit("<b>⁉️ Please, provide valid IDs or arguments</b>\n\n<blockquote><b><u>EXAMPLES:</u> /del_admins [user_ids] :</b> To delete one or multiple specified IDs\n<code>/del_admins all</code>: To delete all available user IDs</blockquote>", reply_markup=reply_markup)
+
+    if len(admins) == 1 and admins[0].lower() == "all":
+        if admin_ids:
+            for id in admin_ids:
+                await db.del_admin(id)
+
+            ids = "\n".join(f"<blockquote><code>{admin}</code> ✅</blockquote>" for admin in admin_ids)
+            return await pro.edit(f"<b>⛔️ All available admin IDs are deleted:\n{ids}</b>", reply_markup=reply_markup)
+        else:
+            return await pro.edit("<b><blockquote>⁉️ No admin IDs available to delete</blockquote></b>", reply_markup=reply_markup)
+
+    if len(admin_ids) >= 1:
+        passed = ''
+        for admin_id in admins:
+            try:
+                id = int(admin_id)
+            except:
+                passed += f"<b><blockquote><i>Invalid ID: <code>{admin_id}</code></i></blockquote></b>\n"
+                continue
+            if id in admin_ids:
+                await db.del_admin(id)
+                passed += f"<blockquote><code>{id}</code> ✅</blockquote>\n"
+            else:
+                passed += f"<b><blockquote><code>{id}</code> not in admin list</blockquote></b>\n"
+
+        await pro.edit(f"<b>⛔️ Provided admin IDs are deleted:\n\n{passed}</b>", reply_markup=reply_markup)
+    else:
+        await pro.edit("<b><blockquote>⁉️ No admin IDs available to delete</blockquote></b>", reply_markup=reply_markup)
 
 
-@Bot.on_message(filters.command('status') & filters.private & is_admin)
-async def info(client: Bot, message: Message):   
+# +++ Customised by Rohit[telegram username: @rohit_1888] +++
+
+
+
+@Bot.on_message(filters.command('admin_list') & filters.private & is_admin)
+async def get_admins(client: Client, message: Message):
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+    admin_ids = await db.get_all_admins()
+    admin_list = "<b><blockquote>❌ No admins found!</blockquote></b>"
+    if admin_ids:
+        admin_list = ""
+        for id in admin_ids:
+            admin_list += f"<b><blockquote>ID: <code>{id}</code></blockquote></b>\n\n"
+
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]])
+    await pro.edit(f"<b>ᴀᴅᴍɪɴ's ʟɪsᴛ:</b>\n\n{admin_list}", reply_markup=reply_markup)
+
+#Commands for banned user function............
+@Bot.on_message(filters.command('add_banuser') & filters.private & is_admin)
+async def add_banuser(client:Client, message:Message):        
+    pro = await message.reply("<b>ᴘʀᴏᴄᴇssɪɴɢ....</b>", quote=True)
+    check, autho_users = 0, []
+    banuser_ids = await db.get_ban_users()
+    autho_users = await db.get_all_admins(); autho_users.append(OWNER_ID)
+    banusers = message.text.split()[1:]
+
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data = "close")]])
-    
-    start_time = time.time()
-    temp_msg = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)  # Temporary message
-    end_time = time.time()
-    
-    # Calculate ping time in milliseconds
-    ping_time = (end_time - start_time) * 1000
-    
-    users = await db.full_userbase()
-    now = datetime.now()
-    delta = now - client.uptime
-    bottime = get_readable_time(delta.seconds)
-    
-    await temp_msg.edit(f"🚻 : <b>{len(users)} ᴜsᴇʀs\n\n🤖 ᴜᴘᴛɪᴍᴇ » {bottime}\n\n📡 ᴘɪɴɢ » {ping_time:.2f} ms</b>", reply_markup = reply_markup,)
+
+    if not banusers:
+        return await pro.edit("<b>ʏᴏᴜ ɴᴇᴇᴅ ᴛᴏ ᴀᴅᴅ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ɪᴅs\n\n<blockquote><u>EXAMPLE</u> : /add_banuser [user_id] :</b> ʏᴏᴜ ᴄᴀɴ ᴀᴅᴅ ᴏɴᴇ ᴏʀ ᴍᴜʟᴛɪᴘʟᴇ ᴜsᴇʀ ɪᴅ ᴀᴛ ᴀ ᴛɪᴍᴇ.</blockquote>", reply_markup=reply_markup)
+
+    banuser_list = ""
+    for id in banusers:
+        try:
+            id = int(id)
+        except:
+            banuser_list += f"<blockquote><b>ɪɴᴠᴀʟɪᴅ ɪᴅ: <code>{id}</code></b></blockquote>\n"
+            continue
+
+        if id in autho_users:
+            banuser_list += f"<blockquote><b>ɪᴅ: <code>{id}</code>, ᴄᴏᴜʟᴅ ʙᴇ ᴀᴅᴍɪɴ ᴏʀ ᴏᴡɴᴇʀ</b></blockquote>\n"
+            continue
+
+        if id in banuser_ids:
+            banuser_list += f"<blockquote><b>ɪᴅ: <code>{id}</code>, ᴀʟʀᴇᴀᴅʏ ᴇxɪsᴛ..</b></blockquote>\n"
+            continue
+
+        id = str(id)  
+        if id.isdigit() and len(id) == 10:
+            banuser_list += f"<b><blockquote>(ID: <code>{id}</code>)</blockquote></b>\n"
+            check += 1
+        else:
+            banuser_list += f"<blockquote><b>ɪɴᴠᴀʟɪᴅ ɪᴅ: <code>{id}</code></b></blockquote>\n"
+            continue            
+
+    if check == len(banusers):
+        for id in banusers:
+            await db.add_ban_user(int(id))
+        await pro.edit(f'<b>ɴᴇᴡ ɪᴅs ᴀᴅᴅᴇᴅ ɪɴ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ʟɪsᴛ ✅</b>\n\n{banuser_list}', reply_markup=reply_markup)
+
+    else:
+        await pro.edit(f'<b>❌ ᴇʀʀᴏʀ oᴄᴄᴜʀᴇᴅ ᴡʜɪʟᴇ ᴀᴅᴅɪɴɢ ʙᴀɴɴᴇᴅ ᴜsᴇʀs</b>\n\n{banuser_list.strip()}\n\n<b><i>ᴘʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ...</i></b>', reply_markup=reply_markup)
+    #await update_fsub(1)
 
 
-@Bot.on_message(filters.command('cmd') & filters.private & is_admin)
-async def bcmd(bot: Bot, message: Message):        
+@Bot.on_message(filters.command('del_banuser') & filters.private & is_admin)
+async def delete_banuser(client:Client, message:Message):        
+    pro = await message.reply("<b>ᴘʀᴏᴄᴇssɪɴɢ....</b>", quote=True)
+    banuser_ids = await db.get_ban_users()
+    banusers = message.text.split()[1:]
+
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data = "close")]])
-    await message.reply(text=CMD_TXT, reply_markup = reply_markup, quote= True)
-    
-#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------#    
 
-#--------------------------------------------------------------[[NORMAL USER ACCESSIBLE COMMANDS]]----------------------------------------------------------------------#
+    if not banusers:
+        return await pro.edit("<b>⁉️ ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴠᴀʟɪᴅ ɪᴅs ᴏʀ ᴀʀɢᴜᴍᴇɴᴛs</b>\n\n<blockquote><b><u>EXAMPLE:</u>\n/del_banuser [user_ids] :</b> ᴛᴏ ᴅᴇʟᴇᴛᴇ ᴏɴᴇ ᴏʀ ᴍᴜʟᴛɪᴘʟᴇ sᴘᴇᴄɪғɪᴇᴅ ɪᴅs\n<code>/del_banuser all</code> : ᴛᴏ ᴅᴇʟᴇᴛᴇ ᴀʟʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴜsᴇʀ ɪᴅs</blockquote>", reply_markup=reply_markup)
 
-@Bot.on_message(filters.command('forcesub') & filters.private & ~banUser)
-async def fsub_commands(client: Client, message: Message):
-    button = [[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]]
-    await message.reply(text=FSUB_CMD_TXT, reply_markup=InlineKeyboardMarkup(button), quote=True)
+    if len(banusers) == 1 and banusers[0].lower() == "all":
+        if banuser_ids:
+            for id in banuser_ids:
+                await db.del_ban_user(id)
+            ids = "\n".join(f"<blockquote><code>{user}</code> ✅</blockquote>" for user in banuser_ids)
+            return await pro.edit(f"<b>⛔️ ᴀʟʟ ᴀᴠᴀɪʟᴀʙʟᴇ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ɪᴅ ᴀʀᴇ ᴅᴇʟᴇᴛᴇᴅ :\n{ids}</b>", reply_markup=reply_markup)
+        else:
+            return await pro.edit("<b><blockquote>⁉️ ɴᴏ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ɪᴅ Lɪsᴛ ᴀᴠᴀɪʟᴀʙʟᴇ ᴛᴏ ᴅᴇʟᴇᴛᴇ</blockquote></b>", reply_markup=reply_markup)
+
+    if len(banuser_ids) >= 1:
+        passed = ''
+        for ban_id in banusers:
+            try:
+                id = int(ban_id)
+            except:
+                passed += f"<blockquote><b>ɪɴᴠᴀʟɪᴅ ɪᴅ: <code>{ban_id}</code></b></blockquote>\n"
+                continue
+
+            if id in banuser_ids:
+                await db.del_ban_user(id)
+                passed += f"<blockquote><code>{id}</code> ✅</blockquote>\n"
+            else:
+                passed += f"<blockquote><b><code>{id}</code> ɴᴏᴛ ɪɴ ʙᴀɴɴᴇᴅ ʟɪsᴛ</b></blockquote>\n"
+
+        await pro.edit(f"<b>⛔️ ᴘʀᴏᴠɪᴅᴇᴅ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ɪᴅ ᴀʀᴇ ᴅᴇʟᴇᴛᴇᴅ :</u>\n\n{passed}</b>", reply_markup=reply_markup)
+
+    else:
+        await pro.edit("<b><blockquote>⁉️ ɴᴏ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ɪᴅ ʟɪsᴛ ᴀᴠᴀɪʟᴀʙʟᴇ ᴛᴏ ᴅᴇʟᴇᴛᴇ</blockquote></b>", reply_markup=reply_markup)
+
+@Bot.on_message(filters.command('banuser_list') & filters.private & is_admin)
+async def get_banuser_list(client:Client, message: Message):        
+    pro = await message.reply("<b><i>ᴘʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
+
+    banuser_ids = await db.get_ban_users()
+    banuser_list = "<b><blockquote>❌ ɴᴏ ʙᴀɴɴᴇᴅ ᴜsᴇʀ ʟɪsᴛ ғᴏᴜɴᴅ !</blockquote></b>"
+
+    if banuser_ids:
+        banuser_list = ""
+        for id in banuser_ids:
+            await message.reply_chat_action(ChatAction.TYPING)
+            try:
+                user = await client.get_users(id)
+                user_link = f"tg://openmessage?user_id={id}"
+                first_name = user.first_name if user.first_name else "No first name !"
+
+                banuser_list += f"<b><blockquote>NAME: <a href = {user_link}>{first_name}</a>\n(ID: <code>{id}</code>)</blockquote></b>\n\n"
+
+            except:
+                banuser_list += f"<b><blockquote>ɪᴅ: <code>{id}</code>\n<i>ᴜɴᴀʙʟᴇ ᴛᴏ ʟᴏᴀᴅ ᴏᴛʜᴇʀ ᴅᴇᴛᴀɪʟs..</i></blockquote></b>\n\n"
+
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data = "close")]])
+    await message.reply_chat_action(ChatAction.CANCEL)
+    await pro.edit(f"<b>🚫 𝗕𝗔𝗡𝗡𝗘𝗗 𝗨𝗦𝗘𝗥 𝗟𝗜𝗦𝗧 :</b>\n\n{banuser_list}", reply_markup=reply_markup, disable_web_page_preview = True)
 
 
-@Bot.on_message(filters.command('users') & filters.private & ~banUser)
-async def user_setting_commands(client: Client, message: Message):
-    button = [[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data="close")]]
-    await message.reply(text=USER_CMD_TXT, reply_markup=InlineKeyboardMarkup(button), quote=True)
+#=====================================================================================##
+#.........Extra Functions.......#
+#=====================================================================================##
 
-    
-HELP = "https://graph.org//file/10f310dd6a7cb56ad7c0b.jpg"
-@Bot.on_message(filters.command('help') & filters.private & ~banUser)
-async def help(client: Client, message: Message):
-    buttons = [
-        [
-            InlineKeyboardButton("🔥 ᴏᴡɴᴇʀ", url="https://t.me/DoraShin_hlo"), 
-            InlineKeyboardButton("👨‍💻 ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/urr_sanjiii")
-        ]
-    ]
-    if SUPPORT_GROUP:
-        buttons.insert(0, [InlineKeyboardButton("•  sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ ɢʀᴏᴜᴘ  •", url="https://t.me/Mugiwaras_Network")])
+# Auto Delete Setting Commands
+@Bot.on_message(filters.command('auto_del') & filters.private & ~banUser)
+async def autoDelete_settings(client, message):
+    await message.reply_chat_action(ChatAction.TYPING)
 
     try:
-        reply_markup = InlineKeyboardMarkup(buttons)
+            timer = convert_time(await db.get_del_timer())
+            if await db.get_auto_delete():
+                autodel_mode = on_txt
+                mode = 'ᴅɪsᴀʙʟᴇ ❌'
+            else:
+                autodel_mode = off_txt
+                mode = 'ᴇɴᴀʙʟᴇ ✅'
+
+            await message.reply_photo(
+                photo = autodel_cmd_pic,
+                caption = AUTODEL_CMD_TXT.format(autodel_mode=autodel_mode, timer=timer),
+                reply_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(mode, callback_data='chng_autodel'), InlineKeyboardButton('sᴇᴛ ᴛɪᴍᴇʀ', callback_data='set_timer')],
+                    [InlineKeyboardButton('ʀᴇғʀᴇsʜ', callback_data='autodel_cmd'), InlineKeyboardButton('ᴄʟᴏsᴇ', callback_data='close')]
+                ]),
+                message_effect_id = 5107584321108051014 #👍
+            )
+    except Exception as e:
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data = "close")]])
+            await message.reply(f"<b>! ᴇʀʀᴏʀ ᴏᴄᴄᴜʀᴇᴅ..\n<blockquote>ʀᴇᴀsᴏɴ:</b> {e}</blockquote><b><i>ᴄᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ: @urr_sanjiii</i></b>", reply_markup=reply_markup)
+
+#Files related settings command
+@Bot.on_message(filters.command('files') & filters.private & ~banUser)
+async def files_commands(client: Client, message: Message):
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    try:
+        protect_content = hide_caption = channel_button = off_txt
+        pcd = hcd = cbd = '❌'
+        if await db.get_protect_content():
+            protect_content = on_txt
+            pcd = '✅'
+        if await db.get_hide_caption():
+            hide_caption = on_txt
+            hcd = '✅'
+        if await db.get_channel_button():
+            channel_button = on_txt
+            cbd = '✅'
+        name, link = await db.get_channel_button_link()
+
         await message.reply_photo(
-            photo = HELP,
-            caption = HELP_TEXT.format(
-                first = message.from_user.first_name,
-                last = message.from_user.last_name,
-                username = None if not message.from_user.username else '@' + message.from_user.username,
-                mention = message.from_user.mention,
-                id = message.from_user.id
+            photo = files_cmd_pic,
+            caption = FILES_CMD_TXT.format(
+                protect_content = protect_content,
+                hide_caption = hide_caption,
+                channel_button = channel_button,
+                name = name,
+                link = link
             ),
-            reply_markup = reply_markup,
-            message_effect_id = 5046509860389126442 #🎉
+            reply_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton(f'• ᴘᴄ: {pcd}', callback_data='pc'), InlineKeyboardButton(f'• ʜᴄ: {hcd}', callback_data='hc')],
+                [InlineKeyboardButton(f'• ᴄʙ: {cbd}', callback_data='cb'), InlineKeyboardButton(f'sʙ', callback_data='setcb')],
+                [InlineKeyboardButton('ʀᴇғʀᴇsʜ', callback_data='files_cmd'), InlineKeyboardButton('ᴄʟᴏsᴇ', callback_data='close')]
+            ]),
+            message_effect_id = 5107584321108051014 #👍
         )
     except Exception as e:
-        return await message.reply(f"<b><i>! ᴇʀʀᴏʀ, ᴄᴏɴᴛᴀᴄᴛ ᴏᴡɴᴇʀ ᴛᴏ sᴏʟᴠᴇ ᴛʜᴇ ɪssᴜᴇs @urr_sanjiii</i></b>\n<blockquote expandable><b>ʀᴇᴀsᴏɴ:</b> {e}</blockquote>")
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data = "close")]])
+        await message.reply(f"<b>! ᴇʀʀᴏʀ ᴏᴄᴄᴜʀᴇᴅ..\n<blockquote>ʀᴇᴀsᴏɴ:</b> {e}</blockquote><b><i>ᴄᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ: @urr_sanjiii</i></b>", reply_markup=reply_markup)
 
 
-#--------------------------------------------------------------[[FSUB BUTTON LINKS MANAGEMENT]]-----------------------------------------------------------------#
-
-@Bot.on_message(filters.command('byt') & filters.private & is_admin)
-async def add_fsub_button_link(client: Bot, message: Message):
-    """Add a link for ForceSub button - /byt <link>"""
-    args = message.text.split(maxsplit=1)
-    
-    if len(args) < 2:
-        return await message.reply("<b>ᴜsᴀɢᴇ: /byt <link>\n\n📌 ᴇxᴀᴍᴘʟᴇ: /byt https://t.me/channel_name</b>")
-    
-    link = args[1].strip()
-    
-    # Basic URL validation
-    if not link.startswith(('http://', 'https://', 't.me/', '@')):
-        return await message.reply("<b>❌ ɪɴᴠᴀʟɪᴅ ʟɪɴᴋ! ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴀ ᴠᴀʟɪᴅ URL ᴏʀ Tᴇʟᴇɢʀᴀᴍ ʟɪɴᴋ</b>")
-    
+#Request force sub mode commad,,,,,,
+@Bot.on_message(filters.command('req_fsub') & filters.private & ~banUser)
+async def handle_reqFsub(client: Client, message: Message):
+    await message.reply_chat_action(ChatAction.TYPING)
     try:
-        await db.add_fsub_button_link(link)
-        count = await db.get_fsub_button_links_count()
-        await message.reply(f"<b>✅ ʟɪɴᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!\n\n📊 ᴛᴏᴛᴀʟ /ʙʏᴛ ʟɪɴᴋs: {count}</b>")
-    except Exception as e:
-        logging.error(f"Error adding fsub button link: {e}")
-        await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
+        on = off = ""
+        if await db.get_request_forcesub():
+            on = "🟢"
+            texting = on_txt
+        else:
+            off = "🔴"
+            texting = off_txt
 
-
-@Bot.on_message(filters.command('ryt') & filters.private & is_admin)
-async def remove_all_fsub_button_links(client: Bot, message: Message):
-    """Remove all links added via /byt command"""
-    count = await db.get_fsub_button_links_count()
-    
-    if count == 0:
-        return await message.reply("<b>❌ ɴᴏ ʟɪɴᴋs ᴛᴏ ʀᴇᴍᴏᴠᴇ!</b>")
-    
-    try:
-        await db.delete_all_fsub_button_links()
-        await message.reply(f"<b>✅ ᴀʟʟ {count} /ʙʏᴛ ʟɪɴᴋs ʀᴇᴍᴏᴠᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>")
-    except Exception as e:
-        logging.error(f"Error removing fsub button links: {e}")
-        await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
-
-
-@Bot.on_message(filters.command('lyt') & filters.private & is_admin)
-async def list_fsub_button_links(client: Bot, message: Message):
-    """List all links added via /byt command"""
-    try:
-        links = await db.get_all_fsub_button_links()
-        
-        if not links:
-            return await message.reply("<b>❌ ɴᴏ ʟɪɴᴋs ᴀᴅᴅᴇᴅ ʏᴇᴛ!</b>")
-        
-        text = "<b>📋 /ʙʏᴛ ʟɪɴᴋs ʟɪsᴛ:\n\n</b>"
-        for idx, link in enumerate(links, 1):
-            text += f"<b>{idx}. </b><code>{link}</code>\n"
-        
-        text += f"\n<b>📊 ᴛᴏᴛᴀʟ: {len(links)} ʟɪɴᴋs</b>"
-        await message.reply(text)
-    except Exception as e:
-        logging.error(f"Error listing fsub button links: {e}")
-        await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
-#--------------------------------------------------------------[[PREMIUM COMMANDS]]---------------------------------------------------------------------------#
-
-@Bot.on_message(filters.command('premium') & filters.private & is_admin)
-async def add_premium_user(client: Bot, message: Message):
-    """Add a user to premium status"""
-    try:
-        text = message.text.split()
-
-        if len(text) < 3:
-            return await message.reply(
-                "<b>📌 ᴜsᴀɢᴇ:</b>\n"
-                "<code>/premium &lt;userID&gt; &lt;days&gt;</code>\n\n"
-                "<b>ᴇxᴀᴍᴘʟᴇ:</b>\n"
-                "<code>/premium 123456789 30</code>"
-            )
-
-        try:
-            user_id = int(text[1])
-            days = int(text[2])
-        except ValueError:
-            return await message.reply("<b>❌ ɪɴᴠᴀʟɪᴅ ᴜsᴇʀ ɪᴅ ᴏʀ ᴅᴀʏs!</b>")
-
-        if days <= 0:
-            return await message.reply("<b>❌ ᴅᴀʏs ᴍᴜsᴛ ʙᴇ ɢʀᴇᴀᴛᴇʀ ᴛʜᴀɴ 0!</b>")
-
-        await db.set_premium_user(user_id, days)
-
-        text_response = (
-            f"<b>✅ ᴘʀᴇᴍɪᴜᴍ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!\n\n</b>"
-            f"<b>👤 ᴜsᴇʀ ɪᴅ:</b> <code>{user_id}</code>\n"
-            f"<b>📅 ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{days} ᴅᴀʏs</code>\n"
-            f"<b>🎁 ᴘᴇʀᴋ:</b> <i>ɴᴏ ᴛᴏᴋᴇɴ ᴀᴅs ʀᴇqᴜɪʀᴇᴅ</i>"
-        )
-
-        await message.reply(text_response)
+        button = [
+            [InlineKeyboardButton(f"{on} ᴏɴ", "chng_req"), InlineKeyboardButton(f"{off} ᴏғғ", "chng_req")],
+            [InlineKeyboardButton("• ᴍᴏʀᴇ sᴇᴛᴛɪɴɢs •", "more_settings")]
+        ]
+        await message.reply(text=RFSUB_CMD_TXT.format(req_mode=texting), reply_markup=InlineKeyboardMarkup(button))
 
     except Exception as e:
-        logging.error(f"Error adding premium user: {e}")
-        await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
+        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("•  ᴄʟᴏsᴇ  •", callback_data = "close")]])
+        await message.reply(f"<b>! ᴇʀʀᴏʀ ᴏᴄᴄᴜʀᴇᴅ..\n<blockquote>ʀᴇᴀsᴏɴ:</b> {e}</blockquote><b><i>ᴄᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ: @urr_sanjiii</i></b>", reply_markup=reply_markup)
 
-@Bot.on_message(filters.command('remove') & filters.private & is_admin)
-async def remove_premium_user(client: Bot, message: Message):
-    """Remove premium status from user"""
+
+#======================== PREMIUM SYSTEM CALLBACKS ========================#
+
+@Bot.on_callback_query(filters.regex("buy_premium"))
+async def buy_premium_callback(client: Client, query: CallbackQuery):
+    """Show premium plans"""
     try:
-        text = message.text.split()
+        await query.answer("🎁 Opening premium plans...", show_alert=False)
         
-        if len(text) < 2:
-            return await message.reply(
-                "<b>📌 ᴜsᴀɢᴇ:</b>\n"
-                "<code>/remove &lt;userID&gt;</code>\n\n"
-                "<b>ᴇxᴀᴍᴘʟᴇ:</b>\n"
-                "<code>/remove 123456789</code>"
-            )
+        premium_pic = "https://envs.sh/ehW.jpg"  # Premium plans picture
+        
+        plans_text = """<b>🎁 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs</b>
+
+<blockquote><b>ᴘʀᴇᴍɪᴜᴍ ᴍᴇᴍʙᴇʀsʜɪᴘ ʙᴇɴᴇғɪᴛs:</b>
+✨ ɴᴏ ᴀᴅs/ᴛᴏᴋᴇɴ ɴᴇᴇᴅᴇᴅ
+✨ ᴜɴʟɪᴍɪᴛᴇᴅ ᴀᴄᴄᴇss
+✨ ᴘʀɪᴏʀɪᴛʏ sᴜᴘᴘᴏʀᴛ
+✨ ᴇxᴄʟᴜsɪᴠᴇ ғᴇᴀᴛᴜʀᴇs
+</blockquote>
+
+<b>💰 ᴀᴠᴀɪʟᴀʙʟᴇ ᴘʟᴀɴs:</b>
+
+<blockquote>
+🔹 <b>7 DAYS</b> - ₹39
+🔹 <b>30 DAYS</b> - ₹99
+🔹 <b>90 DAYS</b> - ₹299
+🔹 <b>365 DAYS (1 YEAR)</b> - ₹999
+</blockquote>
+
+<b>📞 ᴄᴏɴᴛᴀᴄᴛ ᴀᴅᴍɪɴ ᴛᴏ ᴘᴜʀᴄʜᴀsᴇ ᴘʀᴇᴍɪᴜᴍ</b>"""
         
         try:
-            user_id = int(text[1])
-        except ValueError:
-            return await message.reply("<b>❌ ɪɴᴠᴀʟɪᴅ ᴜsᴇʀ ɪᴅ!</b>")
-        
-        is_premium = await db.is_premium_user(user_id)
-        
-        if not is_premium:
-            return await message.reply(
-                f"<b>❌ ᴜsᴇʀ <code>{user_id}</code> ɪs ɴᴏᴛ ᴀ ᴘʀᴇᴍɪᴜᴍ ᴜsᴇʀ!</b>"
+            await query.edit_message_media(
+                media=InputMediaPhoto(media=premium_pic),
             )
+        except:
+            pass
         
-        await db.remove_premium_user(user_id)
-        
-        text_response = (
-            f"<b>✅ ᴘʀᴇᴍɪᴜᴍ ʀᴇᴍᴏᴠᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!\n\n</b>"
-            f"<b>👤 ᴜsᴇʀ ɪᴅ:</b> <code>{user_id}</code>\n"
-            f"<b>📌 sᴛᴀᴛᴜs:</b> <i>ʀᴇɢᴜʟᴀʀ ᴜsᴇʀ</i>"
+        await query.edit_message_caption(
+            caption=plans_text,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👨‍💼 ᴏᴡɴᴇʀ", url="https://t.me/Mugiwaras_Network")]
+            ])
         )
-        
-        await message.reply(text_response)
-        
     except Exception as e:
-        logging.error(f"Error removing premium user: {e}")
-        await message.reply(f"<b>❌ ᴇʀʀᴏʀ: {str(e)}</b>")
-
-
-
-
-from plugins.anime import process_publish_workflow, user_data
-from plugins.utils import apply_small_caps
-from pyrogram.enums import ParseMode
-from pyrogram import StopPropagation
-import asyncio
-
-@Bot.on_message(filters.command('create') & filters.private)
-async def create_command(client: Bot, message: Message):
-    user_id = message.from_user.id
-    image_url = "https://graph.org/file/4579616111776d30d008f-5ac8b112f9fdd86cd5.jpg"
-    welcome_msg = apply_small_caps("welcome to the post creator. please click the button below to begin.")
-    caption = f"<blockquote><b>{welcome_msg}</b></blockquote>"
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Create Post", callback_data="start_create_post")]
-    ])
-
-    await message.reply_photo(photo=image_url, caption=caption, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-
-@Bot.on_callback_query(filters.regex('^start_create_post$'), group=-1)
-async def start_create_post_cb(client: Bot, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    await callback_query.answer("Starting post creation...")
-
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close")]])
-    try:
-        from databases.database import db
-        button_config = await db.get_anime_button_config(user_id)
-        if not button_config: button_config = "Join - {link} && Group - https://t.me/posterprobot\nFor More - https://t.me/posterprobot"
-
-        # Display the pre-saved auto-buttons or format
-        # Ask user for target link
-        response = await client.ask(user_id, f"<blockquote>Cᴜʀʀᴇɴᴛ Bᴜᴛᴛᴏɴs:\n\n<code>{button_config}</code>\n\nᴘʟᴇᴀsᴇ sᴇɴᴅ ᴍᴇ ᴛʜᴇ ʟɪɴᴋ ғᴏʀ ᴛʜᴇ ᴘᴏsᴛ/ᴅᴏᴡɴʟᴏᴀᴅ ʙᴜᴛᴛᴏɴ</blockquote>", reply_markup=keyboard, parse_mode=ParseMode.HTML, timeout=120)
-
-        if user_id not in user_data:
-            user_data[user_id] = {}
-
-        user_data[user_id]['post_link'] = response.text
-        user_data[user_id]['is_create_mode'] = True
-        user_data[user_id]['create_image_url'] = "https://graph.org/file/4579616111776d30d008f-5ac8b112f9fdd86cd5.jpg"
-        welcome_msg = apply_small_caps("welcome to the post creator. please click the button below to begin.")
-        user_data[user_id]['create_caption'] = f"<blockquote><b>{welcome_msg}</b></blockquote>"
-
-        await process_publish_workflow(client, callback_query, user_id)
-
-    except asyncio.TimeoutError:
-        await client.send_message(user_id, "Publish process canceled due to timeout.")
-    raise StopPropagation
+        logging.error(f"Error in buy_premium_callback: {e}")
+        await query.answer(f"❌ ᴇʀʀᴏʀ: {str(e)}", show_alert=True)
