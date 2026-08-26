@@ -1,6 +1,6 @@
 import random
 import requests
-import logging
+import logging as log
 import asyncio
 import aiohttp 
 from pyrogram import enums
@@ -13,7 +13,6 @@ from plugins.autoDelete import convert_time
 from databases.database import db
 from datetime import timedelta
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto, ReplyKeyboardMarkup, ReplyKeyboardRemove
-
 
 message_content = '''👋 Hey {first}\n
 <blockquote><b>ᴘʀᴇᴍɪᴜᴍ ᴍᴇᴍʙᴇʀsʜɪᴘ ʙᴇɴᴇғɪᴛs:</b>
@@ -34,8 +33,8 @@ message_content = '''👋 Hey {first}\n
 '''
 
 
-logging.basicConfig(
-    level=logging.INFO,  # Set the logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL)
+log.basicConfig(
+    level=log.INFO,  # Set the logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL)
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -101,8 +100,8 @@ def style_anime_title(title):
 def get_anime_emoji(title):
     emojis = ["✨", "🌟", "💫", "🔥", "💥", "🌸", "🎉", "🎇", "🎆", "⚡"]
     return emojis[hash(title) % len(emojis)]
-# Provide or Make Button by takiing required modes and data
 
+# Provide or Make Button by takiing required modes and data
 def buttonStatus(pc_data: str, hc_data: str, cb_data: str) -> list:
     button = [
         [
@@ -124,8 +123,6 @@ def buttonStatus(pc_data: str, hc_data: str, cb_data: str) -> list:
     return button
 
 # Verify user, if he/she is admin or owner before processing the query...
-
-
 async def authoUser(query, id, owner_only=False):
     if not owner_only:
         if not any([id == OWNER_ID, await db.admin_exist(id)]):
@@ -770,7 +767,7 @@ async def cb_handler(client: Bot, query: CallbackQuery):
                 )
 
             except Exception as e:
-                logging.error(f"Error fetching shortener settings: {e}")
+                log.error(f"Error fetching shortener settings: {e}")
                 await query.message.reply(
                     "🤧 An error occurred while fetching shortener settings. Please try again later.",
                     reply_markup=InlineKeyboardMarkup([
@@ -849,7 +846,7 @@ async def cb_handler(client: Bot, query: CallbackQuery):
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('•  ʙᴀᴄᴋ  •', callback_data='set_shortener')]])
                 )
             except Exception as e:
-                logging.error(f"Error setting shortener details: {e}")  # This now works correctly
+                log.error(f"Error setting shortener details: {e}")  # This now works correctly
                 await query.message.reply(
                     f"⚠️ Error occurred: {e}",
     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('•  ʙᴀᴄᴋ  •', callback_data='set_shortener')]])
