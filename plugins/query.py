@@ -1,13 +1,13 @@
 import random
 import requests
-import logging as log
+from config import LOGGER
 import asyncio
 import aiohttp 
 from pyrogram import enums
 from bot import Bot
 from pyrogram import __version__
 from plugins.FORMATS import *
-from config import *
+from config import TG_BOT_TOKEN, APP_ID, API_HASH, OWNER_ID, SUPPORT_GROUP, PORT, DB_URL, DB_NAME, START_PIC, FORCE_PIC, TG_BOT_WORKERS, PICS, CUSTOM_CAPTION, LOG_FILE_NAME, LOGGER
 from pyrogram.enums import ParseMode, ChatAction, ButtonStyle
 from plugins.autoDelete import convert_time
 from databases.database import db
@@ -34,11 +34,7 @@ message_content = '''👋 Hey {first}\n
 '''
 
 
-log.basicConfig(
-    level=log.INFO,  # Set the logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+
 
 async def fileSettings(getfunc, setfunc=None, delfunc=False):
     btn_mode, txt_mode, pic_mode = '❌', off_txt, off_pic
@@ -770,7 +766,7 @@ async def cb_handler(client: Bot, query: CallbackQuery):
                 )
 
             except Exception as e:
-                log.error(f"Error fetching shortener settings: {e}")
+                LOGGER(__name__).error(f"Error fetching shortener settings: {e}")
                 await query.message.reply(
                     "🤧 An error occurred while fetching shortener settings. Please try again later.",
                     reply_markup=InlineKeyboardMarkup([
@@ -849,7 +845,7 @@ async def cb_handler(client: Bot, query: CallbackQuery):
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('•  ʙᴀᴄᴋ  •', callback_data='set_shortener')]])
                 )
             except Exception as e:
-                log.error(f"Error setting shortener details: {e}")  # This now works correctly
+                LOGGER(__name__).error(f"Error setting shortener details: {e}")  # This now works correctly
                 await query.message.reply(
                     f"⚠️ Error occurred: {e}",
     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('•  ʙᴀᴄᴋ  •', callback_data='set_shortener')]])

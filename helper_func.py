@@ -8,7 +8,7 @@ import re
 import asyncio
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
-from config import *
+from config import TG_BOT_TOKEN, APP_ID, API_HASH, OWNER_ID, SUPPORT_GROUP, PORT, DB_URL, DB_NAME, START_PIC, FORCE_PIC, TG_BOT_WORKERS, PICS, CUSTOM_CAPTION, LOG_FILE_NAME, LOGGER
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait
 from shortzy import Shortzy
