@@ -6,14 +6,13 @@ import pymongo, os
 import motor
 from config import DB_URL, DB_NAME
 from bot import Bot
-import logging
+from config import LOGGER
 from datetime import datetime, timedelta
 import motor.motor_asyncio  # Import the correct module
 
 dbclient = pymongo.MongoClient(DB_URL)
 database = dbclient[DB_NAME]
 
-logging.basicConfig(level=logging.INFO)
 
 
 
@@ -85,7 +84,7 @@ class Rohit:
                 })
             return True
         except Exception as e:
-            logging.error(f"Error setting shortener URL: {e}")
+            LOGGER(__name__).error(f"Error setting shortener URL: {e}")
             return False
 
     async def set_shortener_api(self, api):
@@ -108,7 +107,7 @@ class Rohit:
                 })
             return True
         except Exception as e:
-            logging.error(f"Error setting shortener API key: {e}")
+            LOGGER(__name__).error(f"Error setting shortener API key: {e}")
             return False
 
     async def get_shortener_url(self):
@@ -117,7 +116,7 @@ class Rohit:
             shortener = await self.shortener_data.find_one({"active": True}, {"_id": 0, "shortener_url": 1})
             return shortener.get("shortener_url") if shortener else None
         except Exception as e:
-            logging.error(f"Error fetching shortener URL: {e}")
+            LOGGER(__name__).error(f"Error fetching shortener URL: {e}")
             return None
 
     async def get_shortener_api(self):
@@ -126,7 +125,7 @@ class Rohit:
             shortener = await self.shortener_data.find_one({"active": True}, {"_id": 0, "api_key": 1})
             return shortener.get("api_key") if shortener else None
         except Exception as e:
-            logging.error(f"Error fetching shortener API key: {e}")
+            LOGGER(__name__).error(f"Error fetching shortener API key: {e}")
             return None
 
 
@@ -136,7 +135,7 @@ class Rohit:
             await self.shortener_data.update_many({"active": True}, {"$set": {"active": False}})
             return True
         except Exception as e:
-            logging.error(f"Error deactivating shorteners: {e}")
+            LOGGER(__name__).error(f"Error deactivating shorteners: {e}")
             return False
 
     async def set_verified_time(self, verified_time: int):
@@ -149,7 +148,7 @@ class Rohit:
             )
             return result.modified_count > 0  # Return True if the update was successful
         except Exception as e:
-            logging.error(f"Error updating verified time: {e}")
+            LOGGER(__name__).error(f"Error updating verified time: {e}")
             return False
 
     async def get_verified_time(self):
@@ -158,7 +157,7 @@ class Rohit:
             settings = await self.settings_data.find_one({"_id": "verified_time"})
             return settings.get("verified_time", None) if settings else None
         except Exception as e:
-            logging.error(f"Error fetching verified time: {e}")
+            LOGGER(__name__).error(f"Error fetching verified time: {e}")
             return None
 
     async def set_tut_video(self, video_url: str):
@@ -171,7 +170,7 @@ class Rohit:
             )
             return result.modified_count > 0  # Return True if the update was successful
         except Exception as e:
-            logging.error(f"Error updating tutorial video URL: {e}")
+            LOGGER(__name__).error(f"Error updating tutorial video URL: {e}")
             return False
 
     async def get_tut_video(self):
@@ -180,7 +179,7 @@ class Rohit:
             settings = await self.settings_data.find_one({"_id": "tutorial_video"})
             return settings.get("tutorial_video_url", None) if settings else None
         except Exception as e:
-            logging.error(f"Error fetching tutorial video URL: {e}")
+            LOGGER(__name__).error(f"Error fetching tutorial video URL: {e}")
             return None
 
     # USER MANAGEMENT

@@ -2,7 +2,7 @@
 
 import asyncio
 import base64
-import logging as log
+from config import LOGGER
 import os
 import random
 import sys
@@ -16,12 +16,11 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 from plugins.autoDelete import auto_del_notification, delete_message
 from bot import Bot
-from config import *
+from config import TG_BOT_TOKEN, APP_ID, API_HASH, OWNER_ID, SUPPORT_GROUP, PORT, DB_URL, DB_NAME, START_PIC, FORCE_PIC, TG_BOT_WORKERS, PICS, CUSTOM_CAPTION, LOG_FILE_NAME, LOGGER
 from helper_func import *
-from databases.database import *
-from plugins.FORMATS import *
 from databases.database import db
-from config import *
+from plugins.FORMATS import *
+from config import TG_BOT_TOKEN, APP_ID, API_HASH, OWNER_ID, SUPPORT_GROUP, PORT, DB_URL, DB_NAME, START_PIC, FORCE_PIC, TG_BOT_WORKERS, PICS, CUSTOM_CAPTION, LOG_FILE_NAME, LOGGER
 from pyrogram.errors.exceptions.bad_request_400 import PeerIdInvalid
 from datetime import datetime, timedelta
 from pytz import timezone
@@ -152,14 +151,14 @@ async def start_command(client: Client, message: Message):
 
     ADMINS = await db.get_all_admins()
 
-    log.info(f"Received /start command from user ID: {id}")
+    LOGGER(__name__).info(f"Received /start command from user ID: {id}")
 
     # Check and add user to the database if not present
     if not await db.present_user(id):
         try:
             await db.add_user(id)
         except Exception as e:
-            log.error(f"Error adding user: {e}")
+            LOGGER(__name__).error(f"Error adding user: {e}")
             return
 
     text = message.text        
@@ -201,7 +200,7 @@ async def start_command(client: Client, message: Message):
                     return  # Stop here - user must click 'now click here' again to get files
                 # If already seen for this link, just continue to deliver files
         except Exception as e:
-            log.info(f"Error sending /byt force-sub message: {e}")
+            LOGGER(__name__).info(f"Error sending /byt force-sub message: {e}")
 
         try: base64_string = text.split(" ", 1)[1]
         except: return
@@ -368,7 +367,7 @@ async def not_joined(client: Client, message: Message):
                 for link in byt_links:
                     buttons.append([InlineKeyboardButton(text='»  ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ  «', url=link)])
         except Exception as e:
-            log.info(f"No /byt links to add: {e}")
+            LOGGER(__name__).info(f"No /byt links to add: {e}")
 
         # Add "now click here" button last
         try:

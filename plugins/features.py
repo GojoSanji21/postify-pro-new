@@ -2,7 +2,7 @@
 
 from bot import Bot
 import asyncio
-import logging as log
+from config import LOGGER
 import re, requests
 from pyrogram.enums import ParseMode, ChatAction
 from helper_func import is_admin, banUser
@@ -575,5 +575,5 @@ async def buy_premium_callback(client: Client, query: CallbackQuery):
             ])
         )
     except Exception as e:
-        log.error(f"Error in buy_premium_callback: {e}")
+        LOGGER(__name__).error(f"Error in buy_premium_callback: {e}")
         await query.answer(f"❌ ᴇʀʀᴏʀ: {str(e)}", show_alert=True)
