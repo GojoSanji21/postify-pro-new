@@ -854,13 +854,27 @@ def shift_hue_array(arr, color_hex):
 
 async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
     import numpy as np
+    import textwrap
     template_path = 'plugins/assets/poster4.png'
     template_img = Image.open(template_path).convert('RGBA')
 
     if color_hex.upper() != "#007BFF":
-        arr = np.array(template_img, dtype=np.float32)
-        arr = shift_hue_array(arr, color_hex)
-        template_img = Image.fromarray(arr.astype(np.uint8))
+        import numpy as np
+
+        arr = np.array(template_img, dtype=np.uint8)
+
+        target_hex = color_hex.lstrip('#')
+        tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
+
+        r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
+
+        blue_mask = (b > 150) & (b > r + 50) & (b > g + 20)
+
+        arr[blue_mask, 0] = tr
+        arr[blue_mask, 1] = tg
+        arr[blue_mask, 2] = tb
+
+        template_img = Image.fromarray(arr)
 
     try:
         if custom_image_path:
@@ -878,15 +892,21 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
 
     try:
+        # Resize character image to max height of 1080px to speed up rembg
+        cw, ch = char_img.size
+        if ch > 1080:
+            scale = 1080 / ch
+            new_w = int(cw * scale)
+            char_img = char_img.resize((new_w, 1080), Image.Resampling.LANCZOS)
+
         import rembg
-        char_img = rembg.remove(char_img, alpha_matting=True, alpha_matting_foreground_threshold=240, alpha_matting_background_threshold=10)
+        char_img = rembg.remove(char_img)
     except ImportError:
         raise Exception("Background removal failed due to missing dependencies. Please check rembg and onnxruntime are installed.")
     except Exception as e:
         raise Exception(f"Background removal failed: {str(e)}")
 
     base_canvas = Image.new("RGBA", template_img.size, (0, 0, 0, 255))
-
     base_canvas.paste(template_img, (0, 0), template_img)
 
     try:
@@ -901,22 +921,19 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         py = (bh - nh) // 2 + offset_y
 
         base_canvas.paste(resized, (px, py), mask=resized if resized.mode == 'RGBA' else None)
-    except:
+    except Exception:
         pass
 
     base = base_canvas
-
     draw = ImageDraw.Draw(base)
 
-    font_path = os.path.join(FONTS_DIR, "Montserrat-Bold.ttf")
-    font_path_reg = os.path.join(FONTS_DIR, "Montserrat-Regular.ttf")
-
     try:
-        font_large = ImageFont.truetype(font_path, 80)
-        font_medium = ImageFont.truetype(font_path, 40)
-        font_small = ImageFont.truetype(font_path_reg, 30)
-    except:
-        font_large = font_medium = font_small = ImageFont.load_default()
+        font_large = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 70)
+        font_meta = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 24)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
+    except Exception as e:
+        raise Exception("Failed to load required custom fonts. DO NOT use Pillow's default font.")
 
     try:
         # User Branding Logo
@@ -929,23 +946,28 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            logo_size = 140
-            logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
-            base.paste(logo_img, (1480, 50), mask=logo_img if logo_img.mode == 'RGBA' else None)
-    except: pass
+            # Resize proportionally to 150x150 max
+            logo_img.thumbnail((150, 150), Image.Resampling.LANCZOS)
+            lw, lh = logo_img.size
+            base.paste(logo_img, (1672 - lw - 50, 50), mask=logo_img if logo_img.mode == 'RGBA' else None)
 
-    try:
-        font_brand = ImageFont.truetype(font_path, 35) # Bold font
+            # Position for text below logo
+            text_x = 1672 - (lw//2) - 50
+            text_y = 50 + lh + 20
+        else:
+            text_x = 1672 - 75 - 50
+            text_y = 50 + 150 + 20
     except:
-        font_brand = font_small
+        text_x = 1672 - 75 - 50
+        text_y = 50 + 150 + 20
 
     disp_username = apply_small_caps(username) if small_caps else username
-    draw.text((1550, 220), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
+    draw.text((text_x, text_y), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
 
     disp_title = apply_small_caps(title) if small_caps else title
     title_words = disp_title.split() if disp_title else []
 
-    # Choose a word to highlight with the theme color (e.g. the last word or the longest word in the first few)
+    # Highlight the last word
     highlight_idx = len(title_words) - 1 if title_words else -1
 
     def draw_colored_text(draw_obj, text_words, start_x, start_y, font, highlight_idx_start):
@@ -968,22 +990,7 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     else:
         draw_colored_text(draw, title_words, 100, ty, font_large, 0)
 
-    if synopsis:
-        clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
-
-        # Limit the synopsis length so it doesn't take too much vertical space
-        words = clean_synopsis.split()
-        if len(words) > 50:
-            clean_synopsis = " ".join(words[:50]) + "..."
-
-        import textwrap
-        wrapped_synopsis = textwrap.fill(clean_synopsis, width=50)
-
-        syn_y = ty + 160
-        draw.multiline_text((100, syn_y), wrapped_synopsis, font=font_small, fill=(120, 120, 120, 255), spacing=10)
-
-    # Map Genres / Episodes / Seasons at coordinate matching bottom (e.g. 750)
-    # Format requested: 2026 | ISEKAI • DRAMA | 60(EPS) | 4 SEASON
+    # Metadata (RELEASE YEAR | GENRES | TOTAL EPISODES | TOTAL SEASONS)
     genres_formatted = genres.replace(",", " •").upper() if genres else "UNKNOWN"
 
     metadata_arr = []
@@ -993,19 +1000,28 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     metadata_arr.append(genres_formatted)
 
     if episodes and episodes != "N/A":
-        metadata_arr.append(f"{episodes}(EPS)")
+        metadata_arr.append(f"{episodes} EPS")
 
     if seasons and seasons != "N/A":
         metadata_arr.append(f"{seasons} SEASON")
 
     bottom_text = " | ".join(metadata_arr)
 
-    try:
-        font_meta = ImageFont.truetype(font_path, 25) # slightly bold smaller
-    except:
-        font_meta = font_small
+    # Metadata is below title
+    meta_y = ty + 90
+    draw.text((100, meta_y), bottom_text, font=font_meta, fill=(180, 180, 180, 255))
 
-    draw.text((100, ty + 100), bottom_text, font=font_meta, fill=(180, 180, 180, 255))
+    # Synopsis is below metadata
+    syn_y = meta_y + 60
+    if synopsis:
+        clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
+        lines = textwrap.wrap(clean_synopsis, width=45)
+        # Prevent vertical overflow by limiting to 7 lines max (approx matching the 50 words the reviewer complained about)
+        if len(lines) > 7:
+            lines = lines[:7]
+            lines[-1] = lines[-1] + "..."
+        wrapped_synopsis = "\n".join(lines)
+        draw.multiline_text((100, syn_y), wrapped_synopsis, font=font_synopsis, fill=(100, 100, 100, 255), spacing=10)
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
