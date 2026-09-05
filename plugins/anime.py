@@ -429,23 +429,28 @@ async def build_final_poster(client, callback_query, user_id):
                 synopsis=synopsis, username=final_username, logo_url=custom_logo,
                 crop_state=crop_state, small_caps=False, template_url=color_info['url'], color_hex=color_info['hex']
             )
+    elif template_v == 4:
+        from plugins.thumbnail_maker import generate_poster_4
+        poster_buf = await generate_poster_4(
+            release_year=str(anime.get("seasonYear", "N/A")), episodes=str(anime.get("episodes", "N/A")), seasons="N/A",
+            anime_img_url=image_url if not custom_image_path else None,
+            custom_image_path=custom_image_path, title=title, genres=genres,
+            synopsis=synopsis, username=final_username, logo_url=custom_logo,
+            small_caps=False, color_hex=color_info['hex'],
+            offset_x=user_data[user_id].get('offset_x', 0),
+            offset_y=user_data[user_id].get('offset_y', 0),
+            zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
+        )
     elif template_v == 2:
-        try:
-            from plugins.thumbnail_maker import generate_poster_2
-            poster_buf = await generate_poster_2(
-                anime_img_url=image_url if not custom_image_path else None,
-                custom_image_path=custom_image_path, title=title, genres=genres,
-                synopsis=synopsis, username=final_username, logo_url=custom_logo,
-                crop_state=crop_state, small_caps=False, template_url=color_info['url'],
-                color_hex=color_info['hex'], offset_x=user_data[user_id].get('offset_x', 0),
-                offset_y=user_data[user_id].get('offset_y', 0), zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
-            )
-        except:
-            poster_buf = await generate_poster(
-                anime_img_url=image_url if not custom_image_path else None, custom_image_path=custom_image_path,
-                title=title, genres=genres, synopsis=synopsis, username=final_username, logo_url=custom_logo,
-                crop_state=crop_state, small_caps=False, template_url=color_info['url'], color_hex=color_info['hex']
-            )
+        from plugins.thumbnail_maker import generate_poster_2
+        poster_buf = await generate_poster_2(
+            anime_img_url=image_url if not custom_image_path else None,
+            custom_image_path=custom_image_path, title=title, genres=genres,
+            synopsis=synopsis, username=final_username, logo_url=custom_logo,
+            crop_state=crop_state, small_caps=False, template_url=color_info['url'],
+            color_hex=color_info['hex'], offset_x=user_data[user_id].get('offset_x', 0),
+            offset_y=user_data[user_id].get('offset_y', 0), zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
+        )
     else:
         custom_bg_path = user_data[user_id].get('custom_bg_path', None)
         poster_buf = await generate_poster(
@@ -516,7 +521,7 @@ def get_final_keyboard(user_id):
                 [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
                  InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
             ])
-    elif template_v == 2:
+    elif template_v == 2 or template_v == 4:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("⬆️", callback_data="anime_final_up", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton("⬅️", callback_data="anime_final_left", style=ButtonStyle.PRIMARY),

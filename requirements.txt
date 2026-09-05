@@ -22,3 +22,4 @@ asyncio
 Pillow
 numpy
 opencv-python-headless
+rembg
