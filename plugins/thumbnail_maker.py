@@ -817,18 +817,38 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
 
 def shift_hue_array(arr, color_hex):
+    import cv2
+    import numpy as np
+
     target_hex = color_hex.lstrip('#')
     tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
 
-    r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
-    blue_mask = (b > r + 20) & (b > g + 20)
+    # Convert RGB target to HSV
+    target_color = np.uint8([[[tr, tg, tb]]])
+    target_hsv = cv2.cvtColor(target_color, cv2.COLOR_RGB2HSV)
+    target_h = target_hsv[0][0][0]
 
-    if np.any(blue_mask):
-        intensity = b[blue_mask] / 170.0
+    # Convert image to HSV
+    img_rgb = arr[:,:,:3].astype(np.uint8)
+    hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
 
-        arr[:,:,0][blue_mask] = np.clip(tr * intensity, 0, 255)
-        arr[:,:,1][blue_mask] = np.clip(tg * intensity, 0, 255)
-        arr[:,:,2][blue_mask] = np.clip(tb * intensity, 0, 255)
+    # Define bounds for the blue color we want to replace
+    # Blue is roughly Hue 100-140 in OpenCV (which uses 0-179 for hue)
+    # We also want to exclude grays/whites, so saturation must be > 50, value > 50
+    lower_blue = np.array([100, 50, 50])
+    upper_blue = np.array([140, 255, 255])
+
+    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+
+    # Shift hue
+    hsv[:,:,0][mask > 0] = target_h
+
+    # Convert back to RGB
+    res_rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+    # Place back into RGBA array
+    arr[:,:,:3] = res_rgb
+
     return arr
 
 async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
@@ -866,11 +886,10 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
 
     base_canvas = Image.new("RGBA", template_img.size, (0, 0, 0, 255))
 
+    base_canvas.paste(template_img, (0, 0), template_img)
+
     try:
         iw, ih = char_img.size
-        # The hole for character art in template 4 is basically the left side, but we can position it similarly.
-        # Let's say standard character pasting location on Poster 4 is at offset 0,0 default zoom.
-        # Template 4 is 1672x941. Let's make char fill a box of say 900x941.
         bw, bh = 1000, 941
         sc = max(bw / iw, bh / ih) * zoom_scale
         nw, nh = int(iw * sc), int(ih * sc)
@@ -879,13 +898,10 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         px = (bw - nw) // 2 + offset_x
         py = (bh - nh) // 2 + offset_y
 
-        temp_box = Image.new("RGBA", base_canvas.size, (0,0,0,0))
-        temp_box.paste(resized, (px, py))
-        base_canvas.paste(temp_box, (0,0), temp_box)
+        base_canvas.paste(resized, (px, py), mask=resized if resized.mode == 'RGBA' else None)
     except:
         pass
 
-    base_canvas.paste(template_img, (0, 0), template_img)
     base = base_canvas
 
     draw = ImageDraw.Draw(base)
@@ -911,48 +927,87 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            logo_size = 50
+            logo_size = 140
             logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
-            base.paste(logo_img, (1400, 45), logo_img)
+            base.paste(logo_img, (1480, 50), mask=logo_img if logo_img.mode == 'RGBA' else None)
     except: pass
 
+    try:
+        font_brand = ImageFont.truetype(font_path, 35) # Bold font
+    except:
+        font_brand = font_small
+
     disp_username = apply_small_caps(username) if small_caps else username
-    draw.text((1400, 100), disp_username, font=font_small, fill=(255,255,255,255))
+    draw.text((1550, 200), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
 
     disp_title = apply_small_caps(title) if small_caps else title
     title_words = disp_title.split() if disp_title else []
-    title_lines = []
 
+    # Choose a word to highlight with the theme color (e.g. the last word or the longest word in the first few)
+    highlight_idx = len(title_words) - 1 if title_words else -1
     if len(title_words) > 3:
-        title_lines.append(" ".join(title_words[:3]))
-        if len(title_words) > 6:
-            title_lines.append(" ".join(title_words[3:6]) + "...")
-        else:
-            title_lines.append(" ".join(title_words[3:]))
-    else:
-        title_lines.append(disp_title if disp_title else "")
+        highlight_idx = 2 # e.g. 3rd word
 
-    ty = 100
-    for line in title_lines:
-        draw.text((800, ty), line, font=font_large, fill=(255,255,255,255))
+    def draw_colored_text(draw_obj, text_words, start_x, start_y, font, highlight_idx_start):
+        cx = start_x
+        for i, word in enumerate(text_words):
+            actual_idx = highlight_idx_start + i
+            color = color_hex if actual_idx == highlight_idx else "#000000"
+            draw_obj.text((cx, start_y), word + " ", font=font, fill=color)
+            w = draw_obj.textlength(word + " ", font=font)
+            cx += w
+
+    ty = 130
+    if len(title_words) > 3:
+        draw_colored_text(draw, title_words[:3], 900, ty, font_large, 0)
         ty += 90
+        if len(title_words) > 6:
+            draw_colored_text(draw, title_words[3:6] + ["..."], 900, ty, font_large, 3)
+        else:
+            draw_colored_text(draw, title_words[3:], 900, ty, font_large, 3)
+    else:
+        draw_colored_text(draw, title_words, 900, ty, font_large, 0)
 
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
         words = clean_synopsis.split()
-        final_synopsis = " ".join(words[:15]) + " ...read more"
-        draw.text((800, 300), final_synopsis, font=font_medium, fill=(255,255,255,255))
 
-    # Map Genres / Episodes / Seasons at coordinate 700 as requested
-    bottom_text = genres
-    if episodes and episodes != "N/A":
-        bottom_text += f" | {episodes} Episodes"
-    if seasons and seasons != "N/A":
-        bottom_text += f" | {seasons}"
-    draw.text((800, 700), bottom_text, font=font_small, fill=(255,255,255,255))
+        # Split synopsis into lines for better rendering
+        syn_lines = []
+        for i in range(0, min(len(words), 30), 8):
+            syn_lines.append(" ".join(words[i:i+8]))
+        if len(words) > 30:
+            syn_lines[-1] += " ..."
 
+        syn_y = 350
+        for line in syn_lines:
+            draw.text((900, syn_y), line, font=font_small, fill=(120, 120, 120, 255))
+            syn_y += 45
+
+    # Map Genres / Episodes / Seasons at coordinate matching bottom (e.g. 750)
+    # Format requested: 2026 | ISEKAI • DRAMA | 60(EPS) | 4 SEASON
+    genres_formatted = genres.replace(",", " •").upper() if genres else "UNKNOWN"
+
+    metadata_arr = []
     if release_year and release_year != "N/A":
-        draw.text((800, 750), f"Release Year: {release_year}", font=font_small, fill=(255,255,255,255))
+        metadata_arr.append(release_year)
+
+    metadata_arr.append(genres_formatted)
+
+    if episodes and episodes != "N/A":
+        metadata_arr.append(f"{episodes}(EPS)")
+
+    if seasons and seasons != "N/A":
+        metadata_arr.append(f"{seasons} SEASON")
+
+    bottom_text = " | ".join(metadata_arr)
+
+    try:
+        font_meta = ImageFont.truetype(font_path, 25) # slightly bold smaller
+    except:
+        font_meta = font_small
+
+    draw.text((900, 800), bottom_text, font=font_meta, fill=(80, 80, 80, 255))
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
