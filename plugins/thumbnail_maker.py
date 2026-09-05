@@ -840,8 +840,9 @@ def shift_hue_array(arr, color_hex):
 
     mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
-    # Shift hue
-    hsv[:,:,0][mask > 0] = target_h
+    # Shift hue and adapt saturation, preserve value for shading
+    hsv[:,:,0][mask > 0] = target_hsv[0][0][0]
+    hsv[:,:,1][mask > 0] = target_hsv[0][0][1]
 
     # Convert back to RGB
     res_rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
@@ -878,7 +879,7 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
 
     try:
         import rembg
-        char_img = rembg.remove(char_img)
+        char_img = rembg.remove(char_img, alpha_matting=True, alpha_matting_foreground_threshold=240, alpha_matting_background_threshold=10)
     except ImportError:
         raise Exception("Background removal failed due to missing dependencies. Please check rembg and onnxruntime are installed.")
     except Exception as e:
@@ -895,7 +896,8 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         nw, nh = int(iw * sc), int(ih * sc)
         resized = char_img.resize((nw, nh), Image.Resampling.LANCZOS)
 
-        px = (bw - nw) // 2 + offset_x
+        # Place firmly on the right side of the canvas
+        px = 850 + offset_x
         py = (bh - nh) // 2 + offset_y
 
         base_canvas.paste(resized, (px, py), mask=resized if resized.mode == 'RGBA' else None)
@@ -938,15 +940,13 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         font_brand = font_small
 
     disp_username = apply_small_caps(username) if small_caps else username
-    draw.text((1550, 200), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
+    draw.text((1550, 220), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
 
     disp_title = apply_small_caps(title) if small_caps else title
     title_words = disp_title.split() if disp_title else []
 
     # Choose a word to highlight with the theme color (e.g. the last word or the longest word in the first few)
     highlight_idx = len(title_words) - 1 if title_words else -1
-    if len(title_words) > 3:
-        highlight_idx = 2 # e.g. 3rd word
 
     def draw_colored_text(draw_obj, text_words, start_x, start_y, font, highlight_idx_start):
         cx = start_x
@@ -959,30 +959,28 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
 
     ty = 130
     if len(title_words) > 3:
-        draw_colored_text(draw, title_words[:3], 900, ty, font_large, 0)
+        draw_colored_text(draw, title_words[:3], 100, ty, font_large, 0)
         ty += 90
         if len(title_words) > 6:
-            draw_colored_text(draw, title_words[3:6] + ["..."], 900, ty, font_large, 3)
+            draw_colored_text(draw, title_words[3:6] + ["..."], 100, ty, font_large, 3)
         else:
-            draw_colored_text(draw, title_words[3:], 900, ty, font_large, 3)
+            draw_colored_text(draw, title_words[3:], 100, ty, font_large, 3)
     else:
-        draw_colored_text(draw, title_words, 900, ty, font_large, 0)
+        draw_colored_text(draw, title_words, 100, ty, font_large, 0)
 
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
+
+        # Limit the synopsis length so it doesn't take too much vertical space
         words = clean_synopsis.split()
+        if len(words) > 50:
+            clean_synopsis = " ".join(words[:50]) + "..."
 
-        # Split synopsis into lines for better rendering
-        syn_lines = []
-        for i in range(0, min(len(words), 30), 8):
-            syn_lines.append(" ".join(words[i:i+8]))
-        if len(words) > 30:
-            syn_lines[-1] += " ..."
+        import textwrap
+        wrapped_synopsis = textwrap.fill(clean_synopsis, width=50)
 
-        syn_y = 350
-        for line in syn_lines:
-            draw.text((900, syn_y), line, font=font_small, fill=(120, 120, 120, 255))
-            syn_y += 45
+        syn_y = ty + 160
+        draw.multiline_text((100, syn_y), wrapped_synopsis, font=font_small, fill=(120, 120, 120, 255), spacing=10)
 
     # Map Genres / Episodes / Seasons at coordinate matching bottom (e.g. 750)
     # Format requested: 2026 | ISEKAI • DRAMA | 60(EPS) | 4 SEASON
@@ -1007,7 +1005,7 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     except:
         font_meta = font_small
 
-    draw.text((900, 800), bottom_text, font=font_meta, fill=(80, 80, 80, 255))
+    draw.text((100, ty + 100), bottom_text, font=font_meta, fill=(180, 180, 180, 255))
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
