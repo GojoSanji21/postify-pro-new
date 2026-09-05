@@ -86,6 +86,7 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
                 anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
     else:
         anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
+        pass
 
     base_template = None
     if template_url and template_url.startswith("http"):
@@ -326,6 +327,12 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
                 anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
     else:
         anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
+
+    try:
+        import rembg
+        anime_img = rembg.remove(anime_img)
+    except Exception:
+        pass
 
     base_template_url = "https://ibb.co/N6r6n2Fp"
     base_template = None
@@ -803,5 +810,145 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
     out_bio.name = "poster3.jpg"
+    out_bio.seek(0)
+    return out_bio
+
+
+def shift_hue_array(arr, color_hex):
+    target_hex = color_hex.lstrip('#')
+    tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
+
+    r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
+    blue_mask = (b > r + 20) & (b > g + 20)
+
+    if np.any(blue_mask):
+        intensity = b[blue_mask] / 170.0
+
+        arr[:,:,0][blue_mask] = np.clip(tr * intensity, 0, 255)
+        arr[:,:,1][blue_mask] = np.clip(tg * intensity, 0, 255)
+        arr[:,:,2][blue_mask] = np.clip(tb * intensity, 0, 255)
+    return arr
+
+async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
+    import numpy as np
+    import rembg
+    template_path = 'plugins/assets/poster4.png'
+    template_img = Image.open(template_path).convert('RGBA')
+
+    if color_hex.upper() != "#007BFF":
+        arr = np.array(template_img, dtype=np.float32)
+        arr = shift_hue_array(arr, color_hex)
+        template_img = Image.fromarray(arr.astype(np.uint8))
+
+    try:
+        if custom_image_path:
+            char_img = Image.open(custom_image_path).convert("RGBA")
+        elif anime_img_url:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
+                    if resp.status == 200:
+                        char_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+                    else:
+                        char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
+        else:
+            char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
+
+        char_img = rembg.remove(char_img)
+    except:
+        char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
+
+    base_canvas = Image.new("RGBA", template_img.size, (0, 0, 0, 255))
+
+    try:
+        iw, ih = char_img.size
+        # The hole for character art in template 4 is basically the left side, but we can position it similarly.
+        # Let's say standard character pasting location on Poster 4 is at offset 0,0 default zoom.
+        # Template 4 is 1672x941. Let's make char fill a box of say 900x941.
+        bw, bh = 1000, 941
+        sc = max(bw / iw, bh / ih) * zoom_scale
+        nw, nh = int(iw * sc), int(ih * sc)
+        resized = char_img.resize((nw, nh), Image.Resampling.LANCZOS)
+
+        px = (bw - nw) // 2 + offset_x
+        py = (bh - nh) // 2 + offset_y
+
+        temp_box = Image.new("RGBA", base_canvas.size, (0,0,0,0))
+        temp_box.paste(resized, (px, py))
+        base_canvas.paste(temp_box, (0,0), temp_box)
+    except:
+        pass
+
+    base_canvas.paste(template_img, (0, 0), template_img)
+    base = base_canvas
+
+    draw = ImageDraw.Draw(base)
+
+    font_path = os.path.join(FONTS_DIR, "Montserrat-Bold.ttf")
+    font_path_reg = os.path.join(FONTS_DIR, "Montserrat-Regular.ttf")
+
+    try:
+        font_large = ImageFont.truetype(font_path, 80)
+        font_medium = ImageFont.truetype(font_path, 40)
+        font_small = ImageFont.truetype(font_path_reg, 30)
+    except:
+        font_large = font_medium = font_small = ImageFont.load_default()
+
+    try:
+        # User Branding Logo
+        if logo_url:
+            if logo_url.startswith('http'):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(logo_url) as resp:
+                        if resp.status == 200:
+                            logo_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
+            else:
+                logo_img = Image.open(logo_url).convert("RGBA")
+
+            logo_size = 50
+            logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
+            base.paste(logo_img, (1400, 45), logo_img)
+    except: pass
+
+    disp_username = apply_small_caps(username) if small_caps else username
+    draw.text((1400, 100), disp_username, font=font_small, fill=(255,255,255,255))
+
+    disp_title = apply_small_caps(title) if small_caps else title
+    title_words = disp_title.split() if disp_title else []
+    title_lines = []
+
+    if len(title_words) > 3:
+        title_lines.append(" ".join(title_words[:3]))
+        if len(title_words) > 6:
+            title_lines.append(" ".join(title_words[3:6]) + "...")
+        else:
+            title_lines.append(" ".join(title_words[3:]))
+    else:
+        title_lines.append(disp_title if disp_title else "")
+
+    ty = 100
+    for line in title_lines:
+        draw.text((800, ty), line, font=font_large, fill=(255,255,255,255))
+        ty += 90
+
+    if synopsis:
+        clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
+        words = clean_synopsis.split()
+        final_synopsis = " ".join(words[:15]) + " ...read more"
+        draw.text((800, 300), final_synopsis, font=font_medium, fill=(255,255,255,255))
+
+    # Map Genres / Episodes / Seasons at coordinate 700 as requested
+    bottom_text = genres
+    if episodes and episodes != "N/A":
+        bottom_text += f" | {episodes} Episodes"
+    if seasons and seasons != "N/A":
+        bottom_text += f" | {seasons}"
+    draw.text((800, 700), bottom_text, font=font_small, fill=(255,255,255,255))
+
+    if release_year and release_year != "N/A":
+        draw.text((800, 750), f"Release Year: {release_year}", font=font_small, fill=(255,255,255,255))
+
+    out_bio = io.BytesIO()
+    base.convert("RGB").save(out_bio, format="JPEG", quality=100)
+    out_bio.name = "poster4.jpg"
     out_bio.seek(0)
     return out_bio
