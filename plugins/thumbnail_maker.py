@@ -331,8 +331,10 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     try:
         import rembg
         anime_img = rembg.remove(anime_img)
-    except Exception:
-        pass
+    except ImportError:
+        raise Exception("Background removal failed due to missing dependencies. Please check rembg and onnxruntime are installed.")
+    except Exception as e:
+        raise Exception(f"Background removal failed: {str(e)}")
 
     base_template_url = "https://ibb.co/N6r6n2Fp"
     base_template = None
@@ -831,7 +833,6 @@ def shift_hue_array(arr, color_hex):
 
 async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
     import numpy as np
-    import rembg
     template_path = 'plugins/assets/poster4.png'
     template_img = Image.open(template_path).convert('RGBA')
 
@@ -852,10 +853,16 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
                         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
         else:
             char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
-
-        char_img = rembg.remove(char_img)
-    except:
+    except Exception:
         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
+
+    try:
+        import rembg
+        char_img = rembg.remove(char_img)
+    except ImportError:
+        raise Exception("Background removal failed due to missing dependencies. Please check rembg and onnxruntime are installed.")
+    except Exception as e:
+        raise Exception(f"Background removal failed: {str(e)}")
 
     base_canvas = Image.new("RGBA", template_img.size, (0, 0, 0, 255))
 

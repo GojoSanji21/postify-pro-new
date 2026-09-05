@@ -22,4 +22,5 @@ asyncio
 Pillow
 numpy
 opencv-python-headless
-rembg
+rembg[cpu]
+onnxruntime
