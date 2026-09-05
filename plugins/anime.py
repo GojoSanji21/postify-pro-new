@@ -727,19 +727,29 @@ async def handle_anime_final_move_dir(client: Bot, callback_query: CallbackQuery
     user_id = callback_query.from_user.id
     if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     direction = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_final_", "")
+    template_v = user_data[user_id].get('template_v', 1)
 
-    target = user_data[user_id].get('move_target', 'main')
-    ox_key = 'offset_x' if target == 'main' else f'{target}_offset_x'
-    oy_key = 'offset_y' if target == 'main' else f'{target}_offset_y'
-    
-    if ox_key not in user_data[user_id]: user_data[user_id][ox_key] = 0
-    if oy_key not in user_data[user_id]: user_data[user_id][oy_key] = 0
+    if template_v == 4:
+        if 'offset_x' not in user_data[user_id]: user_data[user_id]['offset_x'] = 0
+        if 'offset_y' not in user_data[user_id]: user_data[user_id]['offset_y'] = 0
+        MOVE_STEP = 50
+        if direction == "up": user_data[user_id]['offset_y'] -= MOVE_STEP
+        elif direction == "down": user_data[user_id]['offset_y'] += MOVE_STEP
+        elif direction == "left": user_data[user_id]['offset_x'] -= MOVE_STEP
+        elif direction == "right": user_data[user_id]['offset_x'] += MOVE_STEP
+    else:
+        target = user_data[user_id].get('move_target', 'main')
+        ox_key = 'offset_x' if target == 'main' else f'{target}_offset_x'
+        oy_key = 'offset_y' if target == 'main' else f'{target}_offset_y'
 
-    MOVE_STEP = 50 if target == 'main' else 20
-    if direction == "up": user_data[user_id][oy_key] -= MOVE_STEP
-    elif direction == "down": user_data[user_id][oy_key] += MOVE_STEP
-    elif direction == "left": user_data[user_id][ox_key] -= MOVE_STEP
-    elif direction == "right": user_data[user_id][ox_key] += MOVE_STEP
+        if ox_key not in user_data[user_id]: user_data[user_id][ox_key] = 0
+        if oy_key not in user_data[user_id]: user_data[user_id][oy_key] = 0
+
+        MOVE_STEP = 50 if target == 'main' else 20
+        if direction == "up": user_data[user_id][oy_key] -= MOVE_STEP
+        elif direction == "down": user_data[user_id][oy_key] += MOVE_STEP
+        elif direction == "left": user_data[user_id][ox_key] -= MOVE_STEP
+        elif direction == "right": user_data[user_id][ox_key] += MOVE_STEP
 
     await callback_query.answer(f"Moved {direction}", show_alert=False)
     try:
@@ -753,14 +763,22 @@ async def handle_anime_final_zoom(client: Bot, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if user_id not in user_data: return await callback_query.answer("Session expired.", show_alert=True)
     action = callback_query.matches[0].group(1) if hasattr(callback_query, 'matches') and callback_query.matches else callback_query.data.replace("anime_final_zoom_", "")
+    template_v = user_data[user_id].get('template_v', 1)
 
-    target = user_data[user_id].get('move_target', 'main')
-    z_key = 'zoom_scale' if target == 'main' else f'{target}_zoom'
-    if z_key not in user_data[user_id]: user_data[user_id][z_key] = 1.0
+    if template_v == 4:
+        if 'zoom_scale' not in user_data[user_id]: user_data[user_id]['zoom_scale'] = 1.0
+        ZOOM_STEP = 0.2
+        if action == "in": user_data[user_id]['zoom_scale'] = min(3.0, user_data[user_id]['zoom_scale'] + ZOOM_STEP)
+        else: user_data[user_id]['zoom_scale'] = max(0.5, user_data[user_id]['zoom_scale'] - ZOOM_STEP)
+        z_key = 'zoom_scale'
+    else:
+        target = user_data[user_id].get('move_target', 'main')
+        z_key = 'zoom_scale' if target == 'main' else f'{target}_zoom'
+        if z_key not in user_data[user_id]: user_data[user_id][z_key] = 1.0
 
-    ZOOM_STEP = 0.2 if target == 'main' else 0.1
-    if action == "in": user_data[user_id][z_key] = min(3.0, user_data[user_id][z_key] + ZOOM_STEP)
-    else: user_data[user_id][z_key] = max(0.5, user_data[user_id][z_key] - ZOOM_STEP)
+        ZOOM_STEP = 0.2 if target == 'main' else 0.1
+        if action == "in": user_data[user_id][z_key] = min(3.0, user_data[user_id][z_key] + ZOOM_STEP)
+        else: user_data[user_id][z_key] = max(0.5, user_data[user_id][z_key] - ZOOM_STEP)
 
     await callback_query.answer(f"Zoomed {action} (Scale: {user_data[user_id][z_key]:.1f}x)", show_alert=False)
     try:
