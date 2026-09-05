@@ -317,7 +317,7 @@ async def anime_template_4_cb(client: Client, query: CallbackQuery):
     ])
     text = apply_small_caps("◉ Select Template For Anime") + "\n\n- " + apply_small_caps("Current: Poster 4")
     try:
-        await query.edit_message_media(media=InputMediaPhoto(TEMPLATE_PIC, caption=header + text), reply_markup=keyboard)
+        await query.edit_message_media(media=InputMediaPhoto("https://graph.org/file/6fd232b728deecb34f631-78e9b52b2395db42e0.jpg", caption=header + text), reply_markup=keyboard)
     except:
         pass
 
