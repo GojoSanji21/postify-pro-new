@@ -7,6 +7,7 @@ import textwrap
 import io
 import numpy as np
 import urllib.parse
+import cv2
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
@@ -54,8 +55,7 @@ def apply_small_caps(text):
     trans = str.maketrans(normal, smallcaps)
     return text.translate(trans)
 
-def colorize_template_2(template_img, new_hex):
-    import numpy as np
+def colorize_template_2(template_img, color_hex):
     arr = np.array(template_img)
     target_hex = color_hex.lstrip('#')
     new_r, new_g, new_b = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
@@ -291,10 +291,6 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
 
 
 def colorize_poster_2_template(template_img, color_hex):
-    import numpy as np
-    import cv2
-    from PIL import Image
-
     arr = np.array(template_img)
     target_hex = color_hex.lstrip('#')
     new_r, new_g, new_b = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
@@ -522,9 +518,6 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
     return buf
 
 
-# ==========================================
-# CROP & PASTE HELPER
-# ==========================================
 def paste_with_crop(canvas, img, box, ox, oy, zoom):
     bw = box[2] - box[0]
     bh = box[3] - box[1]
@@ -539,9 +532,6 @@ def paste_with_crop(canvas, img, box, ox, oy, zoom):
     temp_box.paste(resized, (px, py))
     canvas.paste(temp_box, (box[0], box[1]), temp_box)
 
-# ==========================================
-# POSTER 3 ULTIMATE LOGIC
-# ==========================================
 async def async_fetch_jikan_episodes(anime_title):
     try:
         async with aiohttp.ClientSession() as session:
@@ -574,27 +564,21 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         template_path = os.path.join(ASSETS_DIR, "poster3_template.png")
     base_template = Image.open(template_path).convert("RGBA").resize((1920, 1080), Image.Resampling.LANCZOS)
 
-    # SECURE MASKING: Clear pure white areas safely
     template_arr = np.array(base_template)
     white_mask = (template_arr[:,:,0] >= 240) & (template_arr[:,:,1] >= 240) & (template_arr[:,:,2] >= 240)
 
     region_mask = np.zeros(template_arr.shape[:2], dtype=bool)
-    region_mask[140:710, 180:1030] = True   # Fanart Box
-    region_mask[820:990, 180:370] = True    # Ep 1 Box
-    region_mask[820:990, 1010:1200] = True  # Ep 2 Box
-    
-    # 🚨 LOGO CIRCLE FIX: Ensure the white circle at Top Right becomes perfectly transparent
+    region_mask[140:710, 180:1030] = True   
+    region_mask[820:990, 180:370] = True    
+    region_mask[820:990, 1010:1200] = True  
     region_mask[5:130, 1740:1900] = True    
 
-    # Mask applied to template to clear the white boxes
     template_arr[white_mask & region_mask, 3] = 0
     framed_template = Image.fromarray(template_arr)
 
-    # Base Canvas (This is the background behind everything)
     base_canvas = Image.new("RGBA", (1920, 1080), (30, 30, 30, 255))
     
     try:
-        # User Branding Logo: Pasted at the BACK, so the template's hole will frame it
         if logo_url:
             if logo_url.startswith("http"):
                 async with aiohttp.ClientSession() as session:
@@ -604,10 +588,8 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            # Size big enough to cover the hole completely
             logo_size = 110 
             logo_img = ImageOps.fit(logo_img, (logo_size, logo_size), method=Image.Resampling.LANCZOS)
-            # Pasted directly behind the hole coordinates
             base_canvas.paste(logo_img, (1780, 10), logo_img if logo_img.mode == 'RGBA' else None)
     except Exception:
         pass
@@ -625,31 +607,24 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         else:
             char_img = Image.new("RGBA", (800, 500), (40, 40, 40, 255))
 
-        # Paste Main Fanart on the base canvas
         paste_with_crop(base_canvas, char_img, (201, 156, 1005, 696), offset_x, offset_y, zoom_scale)
     except Exception as e:
         pass
 
-    # BLUR FIX: Enhance the base canvas + template BEFORE drawing text!
     base = Image.alpha_composite(base_canvas, framed_template)
     base = enhance_image(base)
     
     draw = ImageDraw.Draw(base)
     temp_draw = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
 
-    # 🚨 STREAM NOW FIX: Hand-drawn perfectly over the fanart
-    # No white boxes, no transparent text!
     sn_x1, sn_y1 = 235, 575
     sn_x2, sn_y2 = 475, 645
-    # Dark Button Background
     draw.rounded_rectangle([sn_x1, sn_y1, sn_x2, sn_y2], radius=18, fill=(35, 35, 40, 255), outline=(180, 180, 180, 200), width=2)
-    # Stream Now Text
     try:
         sn_font = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 28)
     except:
         sn_font = ImageFont.load_default()
     draw.text((280, 595), "Stream Now", font=sn_font, fill=(255, 255, 255, 255))
-    # Play Polygon
     px, py = 425, 600
     draw.polygon([(px, py), (px, py+20), (px+15, py+10)], outline=(255, 255, 255, 255), width=2)
 
@@ -707,7 +682,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     season_text = "SEASON 1"
     season_match = re.search(r'(?i)\bseason\s+(\d+)', title)
     if season_match: season_text = f"SEASON {season_match.group(1)}"
-    # Shifted slightly UP to center perfectly
     season_x, season_y = 1715, 758 
 
     jikan_data = {}
@@ -719,7 +693,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
         {"title": imdb_data.get('ep2_title') or jikan_data.get('ep2_title') or "", "rating": imdb_data.get('ep2_rating', ""), "duration": imdb_data.get('ep2_duration', ""), "image": imdb_data.get('ep2_thumb') or jikan_data.get('ep2_thumb')}
     ]
     
-    # SHIFTED DURATION POSITIONS LEFT to avoid extreme right
     ep_coords = [
         {"box": (201, 834, 348, 975), "title_pos": (550, 850), "duration_pos": (610, 915)}, 
         {"box": (1032, 834, 1182, 975), "title_pos": (1380, 850), "duration_pos": (1440, 915)} 
@@ -777,8 +750,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
                 base.paste(temp_box, (ep_info["box"][0], ep_info["box"][1]), temp_box)
             except: pass
 
-    # TEXT RENDERING
-
     if disp_title:
         title_y = 125
         for line in title_lines:
@@ -788,11 +759,9 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     for pos, text, font in genre_draw_commands:
         draw.text(pos, text, font=font, fill=(255, 255, 255, 255), anchor="la")
 
-    # Ratings/Duration shifted properly
     if rating and rating != "N/A":
         draw.text((1200, 490), rating, font=font_rating, fill=(255, 255, 255, 255), anchor="la")
     if duration and duration != "N/A":
-        # Shifted left from 1590 to 1520
         draw.text((1520, 490), duration.replace(" min", ""), font=font_rating, fill=(255, 255, 255, 255), anchor="la")
 
     for pos, text, font in synopsis_draw_commands:
@@ -806,7 +775,6 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
 
     disp_username = apply_small_caps(username) if small_caps else username
     if disp_username: 
-        # Shifted Branding Right to X=360
         draw.text((360, 56), disp_username, font=font_brand_small, fill=(180, 180, 180, 255), anchor="lm")
 
     out_bio = io.BytesIO()
@@ -816,82 +784,42 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     return out_bio
 
 
-def shift_hue_array(arr, color_hex):
-    import cv2
-    import numpy as np
-
-    target_hex = color_hex.lstrip('#')
-    tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
-
-    # Convert RGB target to HSV
-    target_color = np.uint8([[[tr, tg, tb]]])
-    target_hsv = cv2.cvtColor(target_color, cv2.COLOR_RGB2HSV)
-    target_h = target_hsv[0][0][0]
-
-    # Convert image to HSV
-    img_rgb = arr[:,:,:3].astype(np.uint8)
-    hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
-
-    # Define bounds for the blue color we want to replace
-    # Blue is roughly Hue 100-140 in OpenCV (which uses 0-179 for hue)
-    # We also want to exclude grays/whites, so saturation must be > 50, value > 50
-    lower_blue = np.array([100, 50, 50])
-    upper_blue = np.array([140, 255, 255])
-
-    mask = cv2.inRange(hsv, lower_blue, upper_blue)
-
-    # Shift hue and adapt saturation, preserve value for shading
-    hsv[:,:,0][mask > 0] = target_hsv[0][0][0]
-    hsv[:,:,1][mask > 0] = target_hsv[0][0][1]
-
-    # Convert back to RGB
-    res_rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-
-    # Place back into RGBA array
-    arr[:,:,:3] = res_rgb
-
-    return arr
-
+# ==========================================
+# FINAL POSTER 4 GENERATION (100% FIXED)
+# ==========================================
 async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
-    import numpy as np
-    import textwrap
-    import io
-    import os
-    import re
-    import aiohttp
-    from PIL import Image, ImageDraw, ImageFont
-
     template_path = 'plugins/assets/poster4.png'
     template_img = Image.open(template_path).convert('RGBA')
 
-    # STEP 1: FAST VIBGYOR THEME CHAMELEON
-    arr = np.array(template_img, dtype=np.uint8)
+    # STEP 1: FAST VIBGYOR THEME CHAMELEON (Only colors blue areas)
+    arr = np.array(template_img, dtype=np.float32)
     target_hex = color_hex.lstrip('#')
     tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
 
     r, g, b, a = arr[:,:,0], arr[:,:,1], arr[:,:,2], arr[:,:,3]
-    # Replace ONLY the Blue shapes. Do not touch white background, grey grids, or black pixels.
-    blue_mask = (b > 150) & (b > r + 50) & (b > g + 20) & (a > 0)
+    # Blue detection mask (Strictly isolates blue without bleeding into white/grey)
+    blue_mask = (b > r + 30) & (b > g + 30) & (a > 0)
+    
     arr[blue_mask, 0] = tr
     arr[blue_mask, 1] = tg
     arr[blue_mask, 2] = tb
-    template_img = Image.fromarray(arr)
+    template_img = Image.fromarray(arr.astype(np.uint8))
 
-    # STEP 2: FAST BACKGROUND REMOVAL (FETCHED VS CUSTOM)
+    # STEP 2: FAST BACKGROUND REMOVAL (Custom vs Fetched)
     try:
         if custom_image_path:
             char_img = Image.open(custom_image_path).convert("RGBA")
-            # Convert solid white (RGB > 240) and solid black (RGB < 15) to transparent
             c_arr = np.array(char_img)
             cr, cg, cb, ca = c_arr[:,:,0], c_arr[:,:,1], c_arr[:,:,2], c_arr[:,:,3]
 
+            # Fast Black/White Eraser (Also zeros RGB to stop edge bleeding on resize)
             white_mask = (cr > 240) & (cg > 240) & (cb > 240)
-            black_mask = (cr < 15) & (cg < 15) & (cb < 15)
-
-            c_arr[white_mask, 3] = 0
-            c_arr[black_mask, 3] = 0
-
+            black_mask = (cr < 25) & (cg < 25) & (cb < 25)
+            
+            c_arr[white_mask] = [0, 0, 0, 0]
+            c_arr[black_mask] = [0, 0, 0, 0]
             char_img = Image.fromarray(c_arr)
+
         elif anime_img_url:
             async with aiohttp.ClientSession() as session:
                 async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
@@ -900,7 +828,6 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
                     else:
                         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
 
-            # Fetched Images: Downsize to max height 1080px to speed up rembg
             cw, ch = char_img.size
             if ch > 1080:
                 scale = 1080 / ch
@@ -919,9 +846,11 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     except Exception:
         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
 
+    # Base Canvas
     base_canvas = Image.new("RGBA", template_img.size, (0, 0, 0, 255))
     base_canvas.paste(template_img, (0, 0), template_img)
 
+    # Paste Character on the RIGHT side
     try:
         iw, ih = char_img.size
         bw, bh = 1000, 941
@@ -929,7 +858,6 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         nw, nh = int(iw * sc), int(ih * sc)
         resized = char_img.resize((nw, nh), Image.Resampling.LANCZOS)
 
-        # Place on the RIGHT side of the canvas
         px = 850 + offset_x
         py = (bh - nh) // 2 + offset_y
 
@@ -941,16 +869,15 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     draw = ImageDraw.Draw(base)
 
     # Load Fonts
-    FONTS_DIR = "plugins/fonts/"
     try:
         font_large = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 70)
         font_meta = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 24)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 24)
         font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
     except Exception as e:
         raise Exception("Failed to load required custom fonts. DO NOT use Pillow's default font.")
 
-    # STEP 4: BRANDING LOGO & TEXT (Top Right)
+    # STEP 3: BRANDING LOGO & TEXT (Top Right)
     try:
         if logo_url:
             if logo_url.startswith('http'):
@@ -961,12 +888,10 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
             else:
                 logo_img = Image.open(logo_url).convert("RGBA")
 
-            # Resize proportionally to 150x150 max
             logo_img.thumbnail((150, 150), Image.Resampling.LANCZOS)
             lw, lh = logo_img.size
             base.paste(logo_img, (1672 - lw - 50, 50), mask=logo_img if logo_img.mode == 'RGBA' else None)
 
-            # Position for text below logo
             text_x = 1672 - (lw//2) - 50
             text_y = 50 + lh + 20
         else:
@@ -979,8 +904,7 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     disp_username = apply_small_caps(username) if small_caps else username
     draw.text((text_x, text_y), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
 
-    # STEP 3: TYPOGRAPHY & LAYOUT (Left Side)
-    # The Title
+    # STEP 4: TYPOGRAPHY & LAYOUT (Left Side, Below Crunchyroll)
     disp_title = apply_small_caps(title) if small_caps else title
     title_words = disp_title.split() if disp_title else []
 
@@ -992,36 +916,39 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
             w = draw_obj.textlength(word + " ", font=font)
             cx += w
 
-    ty = 130
+    # The Title (Safely placed at Y=100, leaving space for Crunchyroll at Y=250-280)
+    ty = 100
     if len(title_words) > 3:
-        # Line 1: max 3 words
         line1_words = title_words[:3]
-        # Line 2: next 3-4 words (total 7)
         if len(title_words) > 7:
             line2_words = title_words[3:7] + ["..."]
         else:
             line2_words = title_words[3:]
 
-        # Decide which word to highlight (last word overall, or last in line 2)
-        draw_colored_text(draw, line1_words, 100, ty, font_large, -1) # no highlight in line 1
+        draw_colored_text(draw, line1_words, 100, ty, font_large, -1) 
         ty += 90
-        draw_colored_text(draw, line2_words, 100, ty, font_large, len(line2_words) - 1) # highlight last in line 2
+        draw_colored_text(draw, line2_words, 100, ty, font_large, len(line2_words) - 1) 
     else:
         draw_colored_text(draw, title_words, 100, ty, font_large, len(title_words) - 1)
 
-    # The Genres
+    # The Genres & Metadata (Below Crunchyroll, Placed at Y=380)
     genres_formatted = ""
     if genres:
         genres_list = [g.strip() for g in genres.split(",")]
         genres_formatted = " | ".join(genres_list).upper()
     else:
         genres_formatted = "UNKNOWN"
+        
+    release_year = release_year if release_year else "2026"
+    episodes = episodes if episodes else "?"
+    seasons = seasons if seasons else "1"
 
-    meta_y = ty + 90
-    draw.text((100, meta_y), genres_formatted, font=font_meta, fill=(180, 180, 180, 255))
+    meta_y = 380
+    metadata_text = f"{release_year} | {genres_formatted} | {episodes} (EPS) | {seasons} SEASON"
+    draw.text((100, meta_y), metadata_text, font=font_meta, fill=(180, 180, 180, 255))
 
-    # The Synopsis
-    syn_y = meta_y + 60
+    # The Synopsis (Placed at Y=450)
+    syn_y = 450
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
         words = clean_synopsis.split()
