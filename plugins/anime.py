@@ -81,11 +81,20 @@ async def fetch_extra_images(title_eng, title_rom, mal_id=None):
     return extra_images
 
 async def fetch_anime_search(query, source="anilist"):
+    import urllib.parse
+    
+    # BROWSER SPOOFING HEADERS (Ye 403 Error ko bypass karega)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+    }
+    
     if source == "mal":
         encoded_query = urllib.parse.quote(query)
         url = f"https://api.jikan.moe/v4/anime?q={encoded_query}&limit=5"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url, timeout=15) as resp:
                 if resp.status != 200:
                     raise Exception(f"MAL API Error: Status {resp.status}")
                 data = await resp.json()
@@ -107,6 +116,7 @@ async def fetch_anime_search(query, source="anilist"):
                     return results
         return []
 
+    # Anilist Search
     url = "https://graphql.anilist.co"
     query_graphql = '''
     query ($search: String) {
@@ -129,8 +139,8 @@ async def fetch_anime_search(query, source="anilist"):
     }
     '''
     variables = {"search": query}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json={'query': query_graphql, 'variables': variables}, timeout=10) as resp:
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.post(url, json={'query': query_graphql, 'variables': variables}, timeout=15) as resp:
             if resp.status != 200:
                 raise Exception(f"Anilist API Error: Status {resp.status}")
             data = await resp.json()
@@ -358,7 +368,6 @@ async def handle_anime_audio_custom(client: Bot, callback_query: CallbackQuery):
     except asyncio.TimeoutError:
         await client.send_message(user_id, "Timeout occurred.")
     raise StopPropagation
-
 
 async def build_final_poster(client, callback_query, user_id):
     anime = user_data[user_id]['selected_anime']
