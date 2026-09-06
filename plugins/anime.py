@@ -521,7 +521,7 @@ def get_final_keyboard(user_id):
                 [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
                  InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
             ])
-    elif template_v == 2 or template_v == 4:
+    elif template_v == 2:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("⬆️", callback_data="anime_final_up", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton("⬅️", callback_data="anime_final_left", style=ButtonStyle.PRIMARY),
@@ -533,6 +533,13 @@ def get_final_keyboard(user_id):
              InlineKeyboardButton(f"🎨 {color_name}", callback_data="anime_final_color", style=ButtonStyle.PRIMARY)],
             [InlineKeyboardButton("𝗖𝗔𝗡𝗖𝗘𝗟", callback_data="close_anime_menu", style=ButtonStyle.PRIMARY),
              InlineKeyboardButton("𝗗𝗢𝗡𝗘", callback_data="final_done", style=ButtonStyle.PRIMARY)]
+        ])
+    elif template_v == 4:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬆️ Up", callback_data="anime_final_up"), InlineKeyboardButton("⬇️ Down", callback_data="anime_final_down")],
+            [InlineKeyboardButton("⬅️ Left", callback_data="anime_final_left"), InlineKeyboardButton("➡️ Right", callback_data="anime_final_right")],
+            [InlineKeyboardButton("➕ Zoom In", callback_data="anime_final_zoom_in"), InlineKeyboardButton("➖ Zoom Out", callback_data="anime_final_zoom_out")],
+            [InlineKeyboardButton("✅ Done", callback_data="final_done")]
         ])
     else:
         return InlineKeyboardMarkup([
