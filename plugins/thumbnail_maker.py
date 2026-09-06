@@ -86,7 +86,6 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
                 anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
     else:
         anime_img = Image.new('RGBA', (1920, 1080), (100, 100, 100, 255))
-        pass
 
     base_template = None
     if template_url and template_url.startswith("http"):
@@ -216,9 +215,9 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
         font_main_white = font_colored_title = ImageFont.load_default()
 
     try:
-        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 35)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
-        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
+        font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 35)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 30)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 40)
     except:
         try:
             font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
@@ -290,33 +289,13 @@ async def generate_poster(anime_img_url=None, custom_image_path=None, title="", 
     return buf
 
 
-def colorize_poster_2_template(template_img, color_hex):
-    arr = np.array(template_img)
-    target_hex = color_hex.lstrip('#')
-    new_r, new_g, new_b = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
-
-    hsv = cv2.cvtColor(arr[:,:,:3], cv2.COLOR_RGB2HSV)
-
-    target_color_img = np.uint8([[[new_r, new_g, new_b]]])
-    target_hsv = cv2.cvtColor(target_color_img, cv2.COLOR_RGB2HSV)[0][0]
-    target_h = target_hsv[0]
-
-    mask = hsv[:,:,1] > 50
-
-    hsv[:,:,0][mask] = target_h
-
-    arr[:,:,:3] = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-
-    return Image.fromarray(arr)
-
-
 async def generate_poster_2(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, crop_state=0, small_caps=False, template_url=None, color_hex="#FF6B00", offset_x=0, offset_y=0, zoom_scale=1.0):
     if custom_image_path:
         anime_img = Image.open(custom_image_path).convert('RGBA')
     elif anime_img_url:
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}) as resp:
+                async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
                     anime_img_data = await resp.read()
                     anime_img = Image.open(io.BytesIO(anime_img_data)).convert('RGBA')
             except Exception:
@@ -356,7 +335,7 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
         base_template = Image.open(os.path.join(os.path.dirname(__file__), "assets", "template.png")).convert('RGBA')
 
     if color_hex:
-        base_template = colorize_poster_2_template(base_template, color_hex).convert('RGBA')
+        base_template = colorize_template_2(base_template, color_hex).convert('RGBA')
 
     char_w, char_h = anime_img.size
     aspect_ratio = char_w / char_h
@@ -372,7 +351,6 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
         base_x = 0
 
     base_y = (1080 - new_h) // 2
-
     paste_x = base_x + offset_x
     paste_y = base_y + offset_y
 
@@ -412,8 +390,8 @@ async def generate_poster_2(anime_img_url=None, custom_image_path=None, title=""
 
     try:
         font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 45)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 30)
-        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 40)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 30)
+        font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 40)
     except:
         try:
             font_genres = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 45)
@@ -621,7 +599,7 @@ async def generate_poster_3(anime_img_url=None, custom_image_path=None, title=""
     sn_x2, sn_y2 = 475, 645
     draw.rounded_rectangle([sn_x1, sn_y1, sn_x2, sn_y2], radius=18, fill=(35, 35, 40, 255), outline=(180, 180, 180, 200), width=2)
     try:
-        sn_font = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 28)
+        sn_font = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 28)
     except:
         sn_font = ImageFont.load_default()
     draw.text((280, 595), "Stream Now", font=sn_font, fill=(255, 255, 255, 255))
@@ -872,7 +850,7 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     try:
         font_large = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 70)
         font_meta = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
-        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Medium.ttf"), 24)
+        font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 24)
         font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
     except Exception as e:
         raise Exception("Failed to load required custom fonts. DO NOT use Pillow's default font.")
