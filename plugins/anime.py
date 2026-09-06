@@ -81,42 +81,31 @@ async def fetch_extra_images(title_eng, title_rom, mal_id=None):
     return extra_images
 
 async def fetch_anime_search(query, source="anilist"):
-    import urllib.parse
-    
-    # BROWSER SPOOFING HEADERS (Ye 403 Error ko bypass karega)
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-    }
-    
     if source == "mal":
         encoded_query = urllib.parse.quote(query)
         url = f"https://api.jikan.moe/v4/anime?q={encoded_query}&limit=5"
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, timeout=15) as resp:
-                if resp.status != 200:
-                    raise Exception(f"MAL API Error: Status {resp.status}")
-                data = await resp.json()
-                if 'data' in data:
-                    results = []
-                    for item in data['data']:
-                        results.append({
-                            'id': item['mal_id'],
-                            'mal_id': item['mal_id'],
-                            'title': {
-                                'romaji': item['title'],
-                                'english': item.get('title_english', item['title'])
-                            },
-                            'genres': [g['name'] for g in item.get('genres', [])],
-                            'description': item.get('synopsis', ''),
-                            'coverImage': {'extraLarge': item['images']['jpg']['large_image_url']} if 'images' in item and 'jpg' in item['images'] else {},
-                            'bannerImage': None 
-                        })
-                    return results
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if 'data' in data:
+                        results = []
+                        for item in data['data']:
+                            results.append({
+                                'id': item['mal_id'],
+                                'mal_id': item['mal_id'],
+                                'title': {
+                                    'romaji': item['title'],
+                                    'english': item.get('title_english', item['title'])
+                                },
+                                'genres': [g['name'] for g in item.get('genres', [])],
+                                'description': item.get('synopsis', ''),
+                                'coverImage': {'extraLarge': item['images']['jpg']['large_image_url']} if 'images' in item and 'jpg' in item['images'] else {},
+                                'bannerImage': None 
+                            })
+                        return results
         return []
 
-    # Anilist Search
     url = "https://graphql.anilist.co"
     query_graphql = '''
     query ($search: String) {
@@ -139,17 +128,16 @@ async def fetch_anime_search(query, source="anilist"):
     }
     '''
     variables = {"search": query}
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.post(url, json={'query': query_graphql, 'variables': variables}, timeout=15) as resp:
-            if resp.status != 200:
-                raise Exception(f"Anilist API Error: Status {resp.status}")
-            data = await resp.json()
-            if 'data' in data and 'Page' in data['data'] and 'media' in data['data']['Page']:
-                results = []
-                for item in data['data']['Page']['media']:
-                    item['mal_id'] = item.get('idMal') 
-                    results.append(item)
-                return results
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json={'query': query_graphql, 'variables': variables}) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if 'data' in data and 'Page' in data['data'] and 'media' in data['data']['Page']:
+                    results = []
+                    for item in data['data']['Page']['media']:
+                        item['mal_id'] = item.get('idMal') 
+                        results.append(item)
+                    return results
     return []
 
 @Bot.on_message(filters.command("anime") & filters.private)
@@ -193,7 +181,7 @@ async def anime_cmd(client: Bot, message: Message):
                 await wait_msg.edit_text("No results found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
                 return
 
-            buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
+            buttons = [[InlineKeyboardButton(anime['title'].get('english') or anime['title'].get('romaji') or 'Unknown', callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
             buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
             await wait_msg.edit_text(f"SEARCH RESULTS (IMDb):", reply_markup=InlineKeyboardMarkup(buttons))
             return
@@ -218,7 +206,7 @@ async def handle_anilist_search(client: Bot, callback_query: CallbackQuery):
 
     query = user_data[user_id]['query']
     await callback_query.answer("Fetching from AniList...")
-    await callback_query.message.edit_text("⏳ Searching AniList...")
+    await callback_query.message.edit_text("⏳ Searching...")
     try:
         results = await fetch_anime_search(query, "anilist")
         user_data[user_id]['results'] = results
@@ -229,7 +217,7 @@ async def handle_anilist_search(client: Bot, callback_query: CallbackQuery):
         buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
         await callback_query.message.edit_text(f"SEARCH RESULTS (ANILIST):", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ Error fetching from AniList: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
+        await callback_query.message.edit_text(f"❌ Error: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
     raise StopPropagation
 
 
@@ -241,7 +229,7 @@ async def handle_mal_search(client: Bot, callback_query: CallbackQuery):
         raise StopPropagation
     query = user_data[user_id]['query']
     await callback_query.answer("Fetching from MAL...")
-    await callback_query.message.edit_text("⏳ Searching MAL...")
+    await callback_query.message.edit_text("⏳ Searching...")
     try:
         results = await fetch_anime_search(query, "mal")
         user_data[user_id]['results'] = results
@@ -252,7 +240,7 @@ async def handle_mal_search(client: Bot, callback_query: CallbackQuery):
         buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
         await callback_query.message.edit_text(f"SEARCH RESULTS (MAL):", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ Error fetching from MAL: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
+        await callback_query.message.edit_text(f"❌ Error: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^close_anime_menu$"), group=-1)
@@ -369,6 +357,7 @@ async def handle_anime_audio_custom(client: Bot, callback_query: CallbackQuery):
         await client.send_message(user_id, "Timeout occurred.")
     raise StopPropagation
 
+
 async def build_final_poster(client, callback_query, user_id):
     anime = user_data[user_id]['selected_anime']
     title = anime['title'].get('english') or anime['title'].get('romaji') or 'Unknown'
@@ -456,15 +445,22 @@ async def build_final_poster(client, callback_query, user_id):
             zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
         )
     elif template_v == 2:
-        from plugins.thumbnail_maker import generate_poster_2
-        poster_buf = await generate_poster_2(
-            anime_img_url=image_url if not custom_image_path else None,
-            custom_image_path=custom_image_path, title=title, genres=genres,
-            synopsis=synopsis, username=final_username, logo_url=custom_logo,
-            crop_state=crop_state, small_caps=False, template_url=color_info['url'],
-            color_hex=color_info['hex'], offset_x=user_data[user_id].get('offset_x', 0),
-            offset_y=user_data[user_id].get('offset_y', 0), zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
-        )
+        try:
+            from plugins.thumbnail_maker import generate_poster_2
+            poster_buf = await generate_poster_2(
+                anime_img_url=image_url if not custom_image_path else None,
+                custom_image_path=custom_image_path, title=title, genres=genres,
+                synopsis=synopsis, username=final_username, logo_url=custom_logo,
+                crop_state=crop_state, small_caps=False, template_url=color_info['url'],
+                color_hex=color_info['hex'], offset_x=user_data[user_id].get('offset_x', 0),
+                offset_y=user_data[user_id].get('offset_y', 0), zoom_scale=user_data[user_id].get('zoom_scale', 1.0)
+            )
+        except:
+            poster_buf = await generate_poster(
+                anime_img_url=image_url if not custom_image_path else None, custom_image_path=custom_image_path,
+                title=title, genres=genres, synopsis=synopsis, username=final_username, logo_url=custom_logo,
+                crop_state=crop_state, small_caps=False, template_url=color_info['url'], color_hex=color_info['hex']
+            )
     else:
         custom_bg_path = user_data[user_id].get('custom_bg_path', None)
         poster_buf = await generate_poster(
