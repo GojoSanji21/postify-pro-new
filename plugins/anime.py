@@ -82,9 +82,12 @@ async def fetch_extra_images(title_eng, title_rom, mal_id=None):
 
 async def fetch_anime_search(query, source="anilist"):
     if source == "mal":
-        url = f"https://api.jikan.moe/v4/anime?q={query}&limit=5"
+        encoded_query = urllib.parse.quote(query)
+        url = f"https://api.jikan.moe/v4/anime?q={encoded_query}&limit=5"
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
+            async with session.get(url, timeout=10) as resp:
+                if resp.status != 200:
+                    raise Exception(f"MAL API Error: Status {resp.status}")
                 data = await resp.json()
                 if 'data' in data:
                     results = []
@@ -127,7 +130,9 @@ async def fetch_anime_search(query, source="anilist"):
     '''
     variables = {"search": query}
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, json={'query': query_graphql, 'variables': variables}) as resp:
+        async with session.post(url, json={'query': query_graphql, 'variables': variables}, timeout=10) as resp:
+            if resp.status != 200:
+                raise Exception(f"Anilist API Error: Status {resp.status}")
             data = await resp.json()
             if 'data' in data and 'Page' in data['data'] and 'media' in data['data']['Page']:
                 results = []
@@ -203,18 +208,18 @@ async def handle_anilist_search(client: Bot, callback_query: CallbackQuery):
 
     query = user_data[user_id]['query']
     await callback_query.answer("Fetching from AniList...")
-    await callback_query.message.edit_text("Searching...")
+    await callback_query.message.edit_text("⏳ Searching AniList...")
     try:
         results = await fetch_anime_search(query, "anilist")
         user_data[user_id]['results'] = results
         if not results:
             await callback_query.message.edit_text("No results found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
             raise StopPropagation
-        buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_ani_{i}")] for i, anime in enumerate(results)]
+        buttons = [[InlineKeyboardButton(anime['title'].get('english') or anime['title'].get('romaji') or 'Unknown', callback_data=f"sel_ani_{i}")] for i, anime in enumerate(results)]
         buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
         await callback_query.message.edit_text(f"SEARCH RESULTS (ANILIST):", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        pass
+        await callback_query.message.edit_text(f"❌ Error fetching from AniList: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
     raise StopPropagation
 
 
@@ -226,18 +231,18 @@ async def handle_mal_search(client: Bot, callback_query: CallbackQuery):
         raise StopPropagation
     query = user_data[user_id]['query']
     await callback_query.answer("Fetching from MAL...")
-    await callback_query.message.edit_text("Searching...")
+    await callback_query.message.edit_text("⏳ Searching MAL...")
     try:
         results = await fetch_anime_search(query, "mal")
         user_data[user_id]['results'] = results
         if not results:
             await callback_query.message.edit_text("No results found.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
             raise StopPropagation
-        buttons = [[InlineKeyboardButton(anime['title']['english'] or anime['title']['romaji'], callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
+        buttons = [[InlineKeyboardButton(anime['title'].get('english') or anime['title'].get('romaji') or 'Unknown', callback_data=f"sel_mal_{i}")] for i, anime in enumerate(results)]
         buttons.append([InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")])
         await callback_query.message.edit_text(f"SEARCH RESULTS (MAL):", reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
-        pass
+        await callback_query.message.edit_text(f"❌ Error fetching from MAL: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(apply_small_caps("Cancel"), callback_data="close_anime_menu")]]))
     raise StopPropagation
 
 @Bot.on_callback_query(filters.regex("^close_anime_menu$"), group=-1)
@@ -357,7 +362,7 @@ async def handle_anime_audio_custom(client: Bot, callback_query: CallbackQuery):
 
 async def build_final_poster(client, callback_query, user_id):
     anime = user_data[user_id]['selected_anime']
-    title = anime['title']['english'] or anime['title']['romaji']
+    title = anime['title'].get('english') or anime['title'].get('romaji') or 'Unknown'
     genres = "  ".join(anime.get('genres', [])[:3])
     synopsis = anime.get('description', '')
     if synopsis:
