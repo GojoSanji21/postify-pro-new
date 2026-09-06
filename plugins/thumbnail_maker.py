@@ -855,30 +855,43 @@ def shift_hue_array(arr, color_hex):
 async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
     import numpy as np
     import textwrap
+    import io
+    import os
+    import re
+    import aiohttp
+    from PIL import Image, ImageDraw, ImageFont
+
     template_path = 'plugins/assets/poster4.png'
     template_img = Image.open(template_path).convert('RGBA')
 
-    if color_hex.upper() != "#007BFF":
-        import numpy as np
+    # STEP 1: FAST VIBGYOR THEME CHAMELEON
+    arr = np.array(template_img, dtype=np.uint8)
+    target_hex = color_hex.lstrip('#')
+    tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
 
-        arr = np.array(template_img, dtype=np.uint8)
+    r, g, b, a = arr[:,:,0], arr[:,:,1], arr[:,:,2], arr[:,:,3]
+    # Replace ONLY the Blue shapes. Do not touch white background, grey grids, or black pixels.
+    blue_mask = (b > 150) & (b > r + 50) & (b > g + 20) & (a > 0)
+    arr[blue_mask, 0] = tr
+    arr[blue_mask, 1] = tg
+    arr[blue_mask, 2] = tb
+    template_img = Image.fromarray(arr)
 
-        target_hex = color_hex.lstrip('#')
-        tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
-
-        r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
-
-        blue_mask = (b > 150) & (b > r + 50) & (b > g + 20)
-
-        arr[blue_mask, 0] = tr
-        arr[blue_mask, 1] = tg
-        arr[blue_mask, 2] = tb
-
-        template_img = Image.fromarray(arr)
-
+    # STEP 2: FAST BACKGROUND REMOVAL (FETCHED VS CUSTOM)
     try:
         if custom_image_path:
             char_img = Image.open(custom_image_path).convert("RGBA")
+            # Convert solid white (RGB > 240) and solid black (RGB < 15) to transparent
+            c_arr = np.array(char_img)
+            cr, cg, cb, ca = c_arr[:,:,0], c_arr[:,:,1], c_arr[:,:,2], c_arr[:,:,3]
+
+            white_mask = (cr > 240) & (cg > 240) & (cb > 240)
+            black_mask = (cr < 15) & (cg < 15) & (cb < 15)
+
+            c_arr[white_mask, 3] = 0
+            c_arr[black_mask, 3] = 0
+
+            char_img = Image.fromarray(c_arr)
         elif anime_img_url:
             async with aiohttp.ClientSession() as session:
                 async with session.get(anime_img_url, headers={'User-Agent': 'Mozilla/5.0'}) as resp:
@@ -886,25 +899,25 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
                         char_img = Image.open(io.BytesIO(await resp.read())).convert("RGBA")
                     else:
                         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
+
+            # Fetched Images: Downsize to max height 1080px to speed up rembg
+            cw, ch = char_img.size
+            if ch > 1080:
+                scale = 1080 / ch
+                new_w = int(cw * scale)
+                char_img = char_img.resize((new_w, 1080), Image.Resampling.LANCZOS)
+
+            try:
+                import rembg
+                char_img = rembg.remove(char_img)
+            except ImportError:
+                raise Exception("Background removal failed due to missing dependencies. Please check rembg and onnxruntime are installed.")
+            except Exception as e:
+                raise Exception(f"Background removal failed: {str(e)}")
         else:
             char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
     except Exception:
         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
-
-    try:
-        # Resize character image to max height of 1080px to speed up rembg
-        cw, ch = char_img.size
-        if ch > 1080:
-            scale = 1080 / ch
-            new_w = int(cw * scale)
-            char_img = char_img.resize((new_w, 1080), Image.Resampling.LANCZOS)
-
-        import rembg
-        char_img = rembg.remove(char_img)
-    except ImportError:
-        raise Exception("Background removal failed due to missing dependencies. Please check rembg and onnxruntime are installed.")
-    except Exception as e:
-        raise Exception(f"Background removal failed: {str(e)}")
 
     base_canvas = Image.new("RGBA", template_img.size, (0, 0, 0, 255))
     base_canvas.paste(template_img, (0, 0), template_img)
@@ -916,7 +929,7 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         nw, nh = int(iw * sc), int(ih * sc)
         resized = char_img.resize((nw, nh), Image.Resampling.LANCZOS)
 
-        # Place firmly on the right side of the canvas
+        # Place on the RIGHT side of the canvas
         px = 850 + offset_x
         py = (bh - nh) // 2 + offset_y
 
@@ -927,6 +940,8 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     base = base_canvas
     draw = ImageDraw.Draw(base)
 
+    # Load Fonts
+    FONTS_DIR = "plugins/fonts/"
     try:
         font_large = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 70)
         font_meta = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
@@ -935,8 +950,8 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     except Exception as e:
         raise Exception("Failed to load required custom fonts. DO NOT use Pillow's default font.")
 
+    # STEP 4: BRANDING LOGO & TEXT (Top Right)
     try:
-        # User Branding Logo
         if logo_url:
             if logo_url.startswith('http'):
                 async with aiohttp.ClientSession() as session:
@@ -964,62 +979,56 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     disp_username = apply_small_caps(username) if small_caps else username
     draw.text((text_x, text_y), disp_username, font=font_brand, fill=(255,255,255,255), anchor="mm")
 
+    # STEP 3: TYPOGRAPHY & LAYOUT (Left Side)
+    # The Title
     disp_title = apply_small_caps(title) if small_caps else title
     title_words = disp_title.split() if disp_title else []
 
-    # Highlight the last word
-    highlight_idx = len(title_words) - 1 if title_words else -1
-
-    def draw_colored_text(draw_obj, text_words, start_x, start_y, font, highlight_idx_start):
+    def draw_colored_text(draw_obj, text_words, start_x, start_y, font, highlight_idx):
         cx = start_x
         for i, word in enumerate(text_words):
-            actual_idx = highlight_idx_start + i
-            color = color_hex if actual_idx == highlight_idx else "#000000"
+            color = f"#{target_hex}" if i == highlight_idx else "#000000"
             draw_obj.text((cx, start_y), word + " ", font=font, fill=color)
             w = draw_obj.textlength(word + " ", font=font)
             cx += w
 
     ty = 130
     if len(title_words) > 3:
-        draw_colored_text(draw, title_words[:3], 100, ty, font_large, 0)
-        ty += 90
-        if len(title_words) > 6:
-            draw_colored_text(draw, title_words[3:6] + ["..."], 100, ty, font_large, 3)
+        # Line 1: max 3 words
+        line1_words = title_words[:3]
+        # Line 2: next 3-4 words (total 7)
+        if len(title_words) > 7:
+            line2_words = title_words[3:7] + ["..."]
         else:
-            draw_colored_text(draw, title_words[3:], 100, ty, font_large, 3)
+            line2_words = title_words[3:]
+
+        # Decide which word to highlight (last word overall, or last in line 2)
+        draw_colored_text(draw, line1_words, 100, ty, font_large, -1) # no highlight in line 1
+        ty += 90
+        draw_colored_text(draw, line2_words, 100, ty, font_large, len(line2_words) - 1) # highlight last in line 2
     else:
-        draw_colored_text(draw, title_words, 100, ty, font_large, 0)
+        draw_colored_text(draw, title_words, 100, ty, font_large, len(title_words) - 1)
 
-    # Metadata (RELEASE YEAR | GENRES | TOTAL EPISODES | TOTAL SEASONS)
-    genres_formatted = genres.replace(",", " •").upper() if genres else "UNKNOWN"
+    # The Genres
+    genres_formatted = ""
+    if genres:
+        genres_list = [g.strip() for g in genres.split(",")]
+        genres_formatted = " | ".join(genres_list).upper()
+    else:
+        genres_formatted = "UNKNOWN"
 
-    metadata_arr = []
-    if release_year and release_year != "N/A":
-        metadata_arr.append(release_year)
-
-    metadata_arr.append(genres_formatted)
-
-    if episodes and episodes != "N/A":
-        metadata_arr.append(f"{episodes} EPS")
-
-    if seasons and seasons != "N/A":
-        metadata_arr.append(f"{seasons} SEASON")
-
-    bottom_text = " | ".join(metadata_arr)
-
-    # Metadata is below title
     meta_y = ty + 90
-    draw.text((100, meta_y), bottom_text, font=font_meta, fill=(180, 180, 180, 255))
+    draw.text((100, meta_y), genres_formatted, font=font_meta, fill=(180, 180, 180, 255))
 
-    # Synopsis is below metadata
+    # The Synopsis
     syn_y = meta_y + 60
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
-        lines = textwrap.wrap(clean_synopsis, width=45)
-        # Prevent vertical overflow by limiting to 7 lines max (approx matching the 50 words the reviewer complained about)
-        if len(lines) > 7:
-            lines = lines[:7]
-            lines[-1] = lines[-1] + "..."
+        words = clean_synopsis.split()
+        if len(words) > 65:
+            clean_synopsis = " ".join(words[:65]) + "...read more"
+
+        lines = textwrap.wrap(clean_synopsis, width=75)
         wrapped_synopsis = "\n".join(lines)
         draw.multiline_text((100, syn_y), wrapped_synopsis, font=font_synopsis, fill=(100, 100, 100, 255), spacing=10)
 
