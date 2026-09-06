@@ -1,5 +1,5 @@
 # ==========================================
-# FINAL POSTER 4 GENERATION (UPDATED LAYOUT & REMBG)
+# FINAL POSTER 4 GENERATION (PERFECT REMBG & LAYOUT)
 # ==========================================
 async def generate_poster_4(anime_img_url=None, custom_image_path=None, title="", genres="", synopsis="", username="", logo_url=None, small_caps=False, color_hex="#007BFF", offset_x=0, offset_y=0, zoom_scale=1.0, release_year="", episodes="", seasons=""):
     import numpy as np
@@ -13,13 +13,14 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     template_path = 'plugins/assets/poster4.png'
     template_img = Image.open(template_path).convert('RGBA')
 
-    # STEP 1: FAST VIBGYOR THEME CHAMELEON (Only colors blue areas)
+    # STEP 1: FAST VIBGYOR THEME CHAMELEON (Fix for black edges on button)
     arr = np.array(template_img, dtype=np.float32)
     target_hex = color_hex.lstrip('#')
     tr, tg, tb = tuple(int(target_hex[i:i+2], 16) for i in (0, 2, 4))
 
     r, g, b, a = arr[:,:,0], arr[:,:,1], arr[:,:,2], arr[:,:,3]
-    blue_mask = (b > r + 30) & (b > g + 30) & (a > 0)
+    # Made the mask slightly more aggressive to catch dark anti-aliased blue edges around buttons
+    blue_mask = (b > r + 15) & (b > g + 15) & (a > 10)
     
     arr[blue_mask, 0] = tr
     arr[blue_mask, 1] = tg
@@ -40,20 +41,16 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
         else:
             char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
 
-        # Downscale slightly for speed before rembg
-        cw, ch = char_img.size
-        if ch > 900:
-            scale = 900 / ch
-            new_w = int(cw * scale)
-            char_img = char_img.resize((new_w, 900), Image.Resampling.LANCZOS)
-
+        # We REMOVED the pre-compression here so the AI doesn't accidentally cut off hands/limbs!
+        
         # Process through rembg for PERFECT edges
         try:
             import rembg
-            char_img = rembg.remove(char_img)
+            # post_process_mask=True ensures the AI recovers foreground details accurately
+            char_img = rembg.remove(char_img, post_process_mask=True)
             char_img = enhance_image(char_img) # Enhance colors & sharpness
         except Exception as e:
-            pass # Fallback to un-removed if rembg fails
+            pass 
 
     except Exception:
         char_img = Image.new("RGBA", (100, 100), (0,0,0,0))
@@ -84,11 +81,11 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
     FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
     try:
         font_large = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Black.ttf"), 70)
-        font_meta = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 30)
+        font_meta = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 26) 
         font_synopsis = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto-Medium.ttf"), 24)
         font_brand = ImageFont.truetype(os.path.join(FONTS_DIR, "Roboto Bold.ttf"), 35)
     except Exception as e:
-        raise Exception("Failed to load required custom fonts. DO NOT use Pillow's default font.")
+        raise Exception("Failed to load required custom fonts.")
 
     # STEP 3: BRANDING LOGO & TEXT (Top Right)
     try:
@@ -129,8 +126,8 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
             w = draw_obj.textlength(word + " ", font=font)
             cx += w
 
-    # The Title (Moved DOWN to Y=125)
-    ty = 125
+    # The Title (Safely placed at Y=140)
+    ty = 140
     if len(title_words) > 3:
         line1_words = title_words[:3]
         if len(title_words) > 7:
@@ -139,39 +136,39 @@ async def generate_poster_4(anime_img_url=None, custom_image_path=None, title=""
             line2_words = title_words[3:]
 
         draw_colored_text(draw, line1_words, 100, ty, font_large, -1) 
-        ty += 90
+        ty += 80
         draw_colored_text(draw, line2_words, 100, ty, font_large, len(line2_words) - 1) 
     else:
         draw_colored_text(draw, title_words, 100, ty, font_large, len(title_words) - 1)
 
-    # The Genres & Metadata (Moved UP to Y=310, exactly under Crunchyroll)
+    # The Genres & Metadata (Directly below Crunchyroll, around Y=290)
     genres_formatted = ""
     if genres:
-        # Title case (e.g., Action, Adventure) and separate with a dot ( • )
+        # Title case format: Action • Adventure • Fantasy
         genres_list = [g.strip().capitalize() for g in genres.split(",")]
         genres_formatted = " • ".join(genres_list)
     else:
         genres_formatted = "Unknown"
         
-    release_year = release_year if release_year else "2026"
-    episodes = episodes if episodes else "?"
-    seasons = seasons if seasons else "1"
+    release_year = release_year if release_year else "N/A"
+    episodes = episodes if episodes else "N/A"
+    seasons = seasons if seasons else "N/A"
 
-    meta_y = 310
+    meta_y = 290
     metadata_text = f"{release_year} | {genres_formatted} | {episodes} (EPS) | {seasons} SEASON"
     draw.text((100, meta_y), metadata_text, font=font_meta, fill=(180, 180, 180, 255))
 
-    # The Synopsis (Moved UP to Y=360, directly under Metadata)
-    syn_y = 360
+    # The Synopsis (Directly below Metadata, around Y=340)
+    syn_y = 340
     if synopsis:
         clean_synopsis = re.sub(r'<[^>]+>', '', synopsis)
         words = clean_synopsis.split()
-        if len(words) > 65:
-            clean_synopsis = " ".join(words[:65]) + "...read more"
+        if len(words) > 55: 
+            clean_synopsis = " ".join(words[:55]) + "...read more"
 
-        lines = textwrap.wrap(clean_synopsis, width=75)
+        lines = textwrap.wrap(clean_synopsis, width=70) 
         wrapped_synopsis = "\n".join(lines)
-        draw.multiline_text((100, syn_y), wrapped_synopsis, font=font_synopsis, fill=(100, 100, 100, 255), spacing=10)
+        draw.multiline_text((100, syn_y), wrapped_synopsis, font=font_synopsis, fill=(120, 120, 120, 255), spacing=10)
 
     out_bio = io.BytesIO()
     base.convert("RGB").save(out_bio, format="JPEG", quality=100)
